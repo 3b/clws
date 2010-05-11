@@ -4,7 +4,7 @@
   :serial t
   :components ((:file "package")
                (:file "util")
-               (:file "queue")
+               (:file "client")
                (:file "resource")
                (:file "read")
                (:file "server")))

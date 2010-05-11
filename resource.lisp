@@ -51,7 +51,7 @@
 
 
 ; (sb-concurrency:receive-message-no-hang *ws-test-queue*)
-
+#++
 (loop for (client data) = (sb-concurrency:receive-message-no-hang *ws-test-queue*)
    while client
    do (format t "handler got frame: ~s~%" data)
@@ -59,7 +59,7 @@
 
 
 (defparameter *echo-kill* nil)
-
+#++
 (loop for (client data) = (sb-concurrency:receive-message *ws-test-queue*)
    until (or *echo-kill* (eq data :kill))
    when client
@@ -72,6 +72,7 @@
   (setf *echo-kill* t)
   (sb-concurrency:send-message *ws-test-queue* (list nil :kill))
 )
+#++
 (kill-echo)
 
 
@@ -86,23 +87,36 @@
       (make-instance 'ws-chat-server))
 
 (defmethod ws-accept-connection ((res ws-chat-server) resource-name headers client)
+  (format t "add client ~s~%" client)
   (push client (clients res))
   (values (slot-value res 'read-queue) nil nil nil))
 
 
 (defun handle-frame (server client data)
   (loop for c in (clients server)
-     unless (eq client c)
+     ;unless (eq client c)
      do (write-to-client c (format nil "chat: ~s.~s : |~s|"
                                    (client-host client)
                                    (client-port client)
                                    data)))
-  (when (eq data :eof)
+  (when (or (eq data :eof)
+            (eq data :dropped))
+    (format t "removed client ~s~%" client)
     (setf (clients server) (delete client (clients server)))
     (write-to-client client :close)))
+#++
+(progn
+  (sb-concurrency:receive-pending-messages *ws-test-queue*)
+  (setf (clients (gethash "/chat" *resources*)) nil)
+  (loop with server = (gethash "/chat" *resources*)
+    for (client data) = (sb-concurrency:receive-message *ws-test-queue*)
+    until (eq data :kill)
+    when client
+    do (handle-frame server client data)))
 
-(loop with server = (gethash "/chat" *resources*)
-   for (client data) = (sb-concurrency:receive-message *ws-test-queue*)
-   until (eq data :kill)
-   when client
-   do (handle-frame server client data))
+#++
+(kill-echo)
+
+
+#++
+(sb-concurrency:receive-pending-messages *ws-test-queue*)

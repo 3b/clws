@@ -4,17 +4,18 @@
 ;;;  commands from other threads, for enabling/disabling readers/writers,
 ;;;  dropping connections, whatever...
 ;;;
-(defparameter *control-queue* (sb-concurrency:make-queue :name '*control-queue*))
-(defvar *control-socket*)
-
-(defun send-command (thunk &key (wake t))
-  (sb-concurrency:enqueue thunk *control-queue*)
-  ;; wake up network thread and tell it to check control queue...
-  (when wake
-    (write-byte 1 *control-socket*)))
-
+;;(defparameter *control-queue* (sb-concurrency:make-queue :name '*control-queue*))
+;;(defvar *control-socket*)
+;;
+;;(defun send-command (thunk &key (wake t))
+;;  (sb-concurrency:enqueue thunk *control-queue*)
+;;  ;; wake up network thread and tell it to check control queue...
+;;  (when wake
+;;    (write-byte 1 *control-socket*)))
+;;
 
 ;;; read-write queue stuff
+#++
 (defstruct queue
   ;; socket to write to
   socket
@@ -43,7 +44,7 @@
   ;; read handler for this queue/socket
   reader
   )
-
+#++
 (defun activate-write (queue)
   (unless (or (queue-writer-active queue)
               (not (socket-os-fd (queue-socket queue))))
@@ -55,12 +56,13 @@
                       (try-write-queue queue)))
     (setf (queue-writer-active queue) t)))
 
+#++
 (defun deactivate-write (queue)
   (when (queue-writer-active queue)
     (funcall (queue-disconnect queue) :write t)
     (setf (queue-writer-active queue) nil)))
 
-
+#++
 (defun activate-read (queue)
   (unless (or (queue-reader-active queue)
               (not (socket-os-fd (queue-socket queue))))
@@ -70,11 +72,13 @@
                     (queue-reader queue))
     (setf (queue-reader-active queue) t)))
 
+#++
 (defun deactivate-read (queue)
   (when (queue-reader-active queue)
     (funcall (queue-disconnect queue) :read t)
     (setf (queue-reader-active queue) nil)))
 
+#++
 (defun try-write-queue (queue)
   (handler-case
       (loop
@@ -120,16 +124,17 @@
       (funcall (queue-disconnect queue) :close t)
       )
 ))
-
+#++
 (defun enqueue-write (queue data)
   (sb-concurrency:enqueue data (queue-write-queue queue))
   (try-write-queue queue))
-
+#++
 (defparameter %frame-start% (make-array 1 :element-type '(unsigned-byte 8)
                                         :initial-element #x00))
+#++
 (defparameter %frame-end% (make-array 1 :element-type '(unsigned-byte 8)
                                       :initial-element #xff))
-
+#++
 (defun write-to-client (client string)
   (let ((hook (%client-server-hook client))
         (queue (%client-queue client)))
@@ -147,18 +152,18 @@
     (funcall hook (lambda ()
                     (format t "server got write-to-client thunk for frame ~s~%" string)
                     (activate-write queue)))))
-
+#++
 (defun enqueue-read (queue data)
   (sb-concurrency:send-message (queue-read-queue queue) data))
-
+#++
 (defun dequeue-read (queue)
   (sb-concurrency:receive-message-no-hang (queue-read-queue queue)))
-
+#++
 (defun store-partial-read (queue data offset)
   ;; fixme: should check for read-buffer-octets getting too big here?
   (push (list data offset) (queue-read-buffers queue))
   (incf (queue-read-buffer-octets queue) (length data)))
-
+#++
 (defun extract-read-chunk-as-utf-8 (queue)
   (let ((*print-pretty* nil))
     (with-output-to-string (str)
@@ -174,7 +179,7 @@
                                                                (car more)))
                      (setf (queue-read-buffers queue) nil
                            (queue-read-buffer-octets queue) 0))))))
-
+#++
 (write "foo" :readably nil :pretty nil)
 
 ;;

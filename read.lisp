@@ -1,9 +1,11 @@
 (in-package #:ws)
+(declaim (optimize (debug 3)))
 
 ;; default buffer size for reading lines/frames
 (defparameter *max-read-frame-size* 8192)
 ;; default max header size in octets (not used yet?)
 (defparameter *max-header-size* 16384)
+#++
 (defparameter *header-encoding* (babel:make-external-format :ascii
                                                             :eol-style :crlf))
 ;; max number of reads before reader gives up on assembling a line/frame
@@ -25,31 +27,29 @@
 "
                              :encoding :utf-8))
 
-(defun lg (&rest args)
-  (apply #'format t args))
 
-(defun disable-readers-for-queue (queue)
-  (loop for c in *clients*
-     for q = (%client-queue queue)
-     when (eq q queue)
-     do (deactivate-read queue)))
-(defun enable-readers-for-queue (queue)
-  (loop for c in *clients*
-     for q = (%client-queue queue)
-     when (eq q queue)
-     do (activate-read queue)))
+#+not-done-yet
+(defun disable-readers-for-queue (client)
+  (loop for c being the hash-values of *clients*
+     when (eq c client)
+     do (client-disable-handler client :read t)))
+#+not-done-yet
+(defun enable-readers-for-queue (client)
+  (loop for c being the hash-values of *clients*
+     when (eq c client)
+     do (client-enable-handler client :read t)))
 
 (defun valid-resource-p (resource)
   ;; todo: see if there is a handler registered for the resource
   (when resource
     (gethash resource *resources*)))
 
-(defun handle-connection-header (queue)
+(defun handle-connection-header (client)
   (format t "parsing handshake: ~s~%"
-          (sb-concurrency:list-mailbox-messages (queue-read-queue queue)))
+          (sb-concurrency:list-mailbox-messages (client-read-queue client)))
   (let* ((resource nil)
          (headers nil)
-         (resource-line (dequeue-read queue))
+         (resource-line (client-dequeue-read client))
          (s1 (position #\space resource-line))
          (s2 (if s1 (position #\space resource-line :start (1+ s1)))))
     (format t "checking header...~%")
@@ -61,8 +61,8 @@
     (when (and s1 s2
                (string= "GET" (subseq resource-line 0 s1))
                (string= " HTTP/1.1" (subseq resource-line s2))
-               (string= "Upgrade: WebSocket" (print (dequeue-read queue)))
-               (string= "Connection: Upgrade" (print (dequeue-read queue))))
+               (string= "Upgrade: WebSocket" (print (client-dequeue-read client)))
+               (string= "Connection: Upgrade" (print (client-dequeue-read client))))
       (setf resource (subseq resource-line (1+ s1) s2)))
 
     (when resource
@@ -78,7 +78,7 @@
           (values :404 nil)))
       ;; otherwise try to parse remaining headers
       (setf headers (make-hash-table :test 'equal))
-      (loop for l = (dequeue-read queue)
+      (loop for l = (client-dequeue-read client)
          while l
          for c = (position #\: l)
          do
@@ -98,8 +98,6 @@
     (values (or resource :invalid-handshake) headers))
   )
 
-;; some extra params for reader fsm, too lazy to add more to lambda-lists
-(defvar *reader-fsm-client-data*)
 (defparameter *reader-fsm*
   ;; mapping of state to lambda
 
@@ -113,8 +111,8 @@
     ;; respond with policy file followed by 0 octet and close the
     ;; socket
     :maybe-policy-file
-    (lambda (buffer queue state)
-      (declare (ignore queue state))
+    (lambda (buffer client state)
+      (declare (ignore client state))
       (cond
         ((= (aref buffer 0) (char-code #\<))
          (values :policy-file (list :start 0)))
@@ -129,31 +127,31 @@
     ;; we might be getting a policy file request, so check for and
     ;; handle that case
     :policy-file
-    (lambda (b queue state)
+    (lambda (b client state)
       (let* ((start (getf state :start))
              (p (position 0 b :start start))
              (junk nil))
         ;; fixme: optimize for the (usual) case where we get request as 1 pkt
-        (store-partial-read queue b (list start p))
+        (store-partial-read client b (list start p))
         (cond
-          ((and p (string= (setf junk (extract-read-chunk-as-utf-8 queue))
+          ((and p (string= (setf junk (extract-read-chunk-as-utf-8 client))
                            "<policy-file-request/>"))
            (lg "got policy request = ~s~%" junk)
            ;; got a policy request, send response and close connection
-           (enqueue-write queue *policy-file*)
-           (enqueue-write queue :close)
+           (client-enqueue-write client *policy-file*)
+           (client-enqueue-write client :close)
            (values :close nil))
           (p
            (lg "got malformed policy request = ~s~%" junk)
            ;; got a whole 0 terminated chunk, but didn't match, kill connection
            (values :abort nil))
-          ((> (queue-read-buffer-octets queue)
+          ((> (client-read-buffer-octets client)
               (length "<policy-file-request/>" ))
            ;; got more octets than expected without a valid request,
            ;; kill connection
            (lg "got oversized policy request~%")
            (values :abort nil))
-          ((> (length (queue-read-buffers queue)) *read-max-fragments*)
+          ((> (length (client-read-buffers client)) *read-max-fragments*)
            ;; got too many tiny fragments, kill connection
            (lg "got overly fragmented policy request~%")
            (values :abort nil))
@@ -167,7 +165,7 @@
     ;;  bytes read probably should add a real parser at some point,
     ;;  and for policy-file as well)
     :header
-    (lambda (b queue state)
+    (lambda (b client state)
       (let* ((start (getf state :start))
              (cr (position #x0d b :start start))
              (next (if (and cr (< (1+ cr) (length b))) (1+ cr))))
@@ -177,14 +175,14 @@
            (values :header-final-lf (if next (list :start next))))
           ((and cr)
            ;; got end of line, check for LF and extract a line
-           (store-partial-read queue b (list start cr))
+           (store-partial-read client b (list start cr))
            (values :header-lf (if next (list :start next))))
-          ((> (queue-read-buffer-octets queue)
+          ((> (client-read-buffer-octets client)
               *max-header-size*)
            ;; header too big, kill connection...
            (lg "read too many octets without finishing header?~%")
            (values :abort nil))
-          ((> (length (queue-read-buffers queue)) *read-max-fragments*)
+          ((> (length (client-read-buffers client)) *read-max-fragments*)
            ;; got too many tiny fragments, kill connection
            (lg "got too many fragments reading header?~%")
            (values :abort nil))
@@ -192,21 +190,21 @@
            ;; not enough octets to tell yet, keep reading...
            (values :header nil)))))
     :header-lf
-    (lambda (b queue state)
+    (lambda (b client state)
       (let* ((start (or (getf state :start) 0))
              (next (if (< (1+  start) (length b)) (1+ start))))
         (cond
           ((and (> (length b) start) (eql #x0a (aref b start)))
            ;; got CRLF pair, extract a string and add to queue,
            ;; then go back to reading header lines
-           (enqueue-read queue (extract-read-chunk-as-utf-8 queue))
+           (client-enqueue-read client (extract-read-chunk-as-utf-8 client))
            (values :header (if next (list :start next))))
           (t ;; assuming 0 length packets won't happen for now...
            ;; no LF, kill connection
            (lg "got CR without LF?")
            (values :abort nil)))))
     :header-final-lf
-    (lambda (b queue state)
+    (lambda (b client state)
       (let* ((start (or (getf state :start) 0))
              (next (if (< (1+ start) (length b)) (1+ start))))
         (cond
@@ -214,15 +212,15 @@
            ;; got final CRLF pair, parse the header
            ;; then go to frame mode
            (multiple-value-bind (resource headers)
-               (handle-connection-header queue)
+               (handle-connection-header client)
              ;; fixme: probably should dispatch on type or something
              ;; so we can catch unexpected other symbols if
              ;; handle-connection-header is modified without matching
              ;; changes here
              (case resource
                (:404
-                (enqueue-write queue *404-message*)
-                (enqueue-write queue :close)
+                (client-enqueue-write client *404-message*)
+                (client-enqueue-write client :close)
                 (values :close nil))
                ((:invalid-handshake :invalid-header :invalid-resource)
                 (lg "bad header ~s~%" resource)
@@ -232,27 +230,25 @@
                 ;; if header parsed OK, send handshake and start reading frames
                 (let ((resource-handler (valid-resource-p resource)))
                   (format t "res=~s handler = ~s~%" resource resource-handler)
-                  (multiple-value-bind (rqueue origin res-handler protocol)
+                  (multiple-value-bind (rqueue origin handshake-resource protocol)
                       (ws-accept-connection resource-handler resource
                                             headers
-                                            *reader-fsm-client-data*)
-                    ;; fixme: this isn't reliable... (need to swtch client-data to class or something soon anyway though)
-                    ;; (not sure it is actually needed yet though)
-                    ;(setf (getf *reader-fsm-client-data* :handler) res-handler)
-                    (setf (queue-read-queue queue) rqueue)
-                    (enqueue-write queue
-                                   (make-handshake
-                                    (or origin
-                                        (gethash "Origin" headers)
-                                        "http://127.0.0.1/")
-                                    (format nil "~a~a" "ws://127.0.0.1:12345"
-                                            resource)
-                                    (or protocol
-                                        (gethash "WebSocket-Protocol" headers)
-                                        "test")))))
-                (values :frame-00 (if next (list :start next)))
-                )))
-           #++(values :abort nil))
+                                            client)
+                    (setf (client-read-queue client) rqueue)
+                    (client-enqueue-write client
+                                          (make-handshake
+                                           (or origin
+                                               (gethash "Origin" headers)
+                                               "http://127.0.0.1/")
+                                           (format nil "~a~a"
+                                                   ;; fixme: set this correctly
+                                                   "ws://127.0.0.1:12345"
+                                                   (or handshake-resource
+                                                       resource))
+                                           (or protocol
+                                               (gethash "WebSocket-Protocol" headers)
+                                               "test")))))
+                (values :frame-00 (if next (list :start next)))))))
           (t ;; assuming 0 length packets won't happen for now...
            ;; no LF, kill connection
            (lg "got CR without LF on final header line?")
@@ -261,8 +257,8 @@
 
     ;; for now only handling 00.ff frames, not other text/binary frame types
     :frame-00
-    (lambda (b queue state)
-      (declare (ignore queue))
+    (lambda (b client state)
+      (declare (ignore client))
       (let* ((start (or (getf state :start) 0))
              (next (if (< start (1+ (length b))) (1+ start))))
         (cond
@@ -278,26 +274,26 @@
                    "not enough octets"))
            (values :abort nil)))))
     :frame-ff
-    (lambda (b queue state)
+    (lambda (b client state)
       (let* ((start (getf state :start))
              (ff (position #xff b :start start))
              (next (if (and ff (< (1+ ff) (length b))) (1+ ff))))
-        (store-partial-read queue b (list start ff))
+        (store-partial-read client b (list start ff))
         (cond
           (ff
            ;; got end of frame marker, extract a frame, queue it, and
            ;; look for next frame
-           (let ((f (extract-read-chunk-as-utf-8 queue)))
-             (enqueue-read queue (list *reader-fsm-client-data* f))
+           (let ((f (extract-read-chunk-as-utf-8 client)))
+             (client-enqueue-read client (list client f))
              (lg "got frame, next=~s, ff=~s, len=~s~%  frame = ~s~%"
-                 next ff (length b) f))
+                  next ff (length b) f))
            (values :frame-00 (if next (list :start next))))
-          ((> (queue-read-buffer-octets queue)
+          ((> (client-read-buffer-octets client)
               *max-read-frame-size*)
            ;; frame too big, kill connection...
            (lg "read too many octets without finishing frame?")
            (values :abort nil))
-          ((> (length (queue-read-buffers queue)) *read-max-fragments*)
+          ((> (length (client-read-buffers client)) *read-max-fragments*)
            ;; got too many tiny fragments, kill connection
            (lg "got too many fragments without finishing frame?~%")
            (values :abort nil))
@@ -314,16 +310,22 @@
       (declare (ignore r))
       (error "reader kept reading on socket that should have been aborted?")))))
 
-(defun make-reader (socket name queue discon)
-  (setf (queue-reader queue)
+(defun add-reader-to-client (client)
+  (lg "set up reader for connection from ~s ~s (~s)~%" (client-host client)
+      (client-port client)
+      (client-socket client))
+  (setf (client-reader client)
         (lambda (fd event exception)
           (declare (ignore fd event exception))
-          (let* ((client-data (gethash name *clients*))
-                 (octets (make-array 2048 :element-type '(unsigned-byte 8)
+          (let* ((octets (make-array 2048 :element-type '(unsigned-byte 8)
                                      :fill-pointer 2048))
-                 (*reader-fsm-client-data* client-data))
+                 (socket (client-socket client)))
             (handler-case
                 (progn
+                   (lg "read from client ~s ~s (~s)~%" (client-host client)
+                       (client-port client)
+                       (client-socket client))
+                   (lg "closed = ~s~%" (client-socket-closed client))
                   (multiple-value-bind (_octets count)
                       ;; fixme: decide on good max read chunk size
                       (receive-from socket :buffer octets :end 2048)
@@ -338,33 +340,38 @@
                                                     :errorp nil))
                     (loop with next-state
                        with next-data
-                       for state = (queue-read-state queue) then next-state
-                       for data = nil then next-data ;(queue-read-state-data queue) then next-data
+                       for state = (client-read-state client) then next-state
+                       for data = nil then next-data
                        do
-                       (format t "parsing packet in state ~s~%" state)
+                         (lg "parsing packet in state ~s~%" state)
+                         (lg "from client ~s~%" client)
                        (setf (values next-state next-data)
                              (funcall (gethash state *reader-fsm*)
-                                      octets queue data))
-                       (format t "  -> state ~s~%" next-state)
+                                      octets client data))
+                       (lg "  -> state ~s~%" next-state)
                        (case next-state
                          ((:close :close-read)
-                          (enqueue-read queue (list *reader-fsm-client-data* :eof))
-                          (funcall discon :read t)
+                          (client-enqueue-read client (list client :eof))
+                          (client-disconnect client :read t)
                           (loop-finish))
                          (:abort
                           (format t "aborting connection~%")
-                          (funcall discon :abort t)
+                          (client-disconnect client :abort t)
                           (loop-finish)))
                        (unless next-data
                          (loop-finish))
-                       finally (setf (queue-read-state queue) next-state
-                                        ;(queue-read-state-data queue) next-data
-                                     ))))
+                       finally (setf (client-read-state client) next-state))))
               (end-of-file ()
-                (enqueue-read queue (list *reader-fsm-client-data* :eof))
-                (format t "closed connection ~s~%" name)
-                ;; fixme: don't close write side of connection if we still have buffered data...
-                (funcall discon :read t))
+                (client-enqueue-read client (list client :eof))
+                (format t "closed connection ~s / ~s~%" (client-host client)
+                        (client-port client))
+                (client-disconnect client :read t))
               ;; ... add error handlers
-              )))))
+              ))))
+  (lg "enable reader for connection from ~s ~s~%" (client-host client)
+      (client-port client))
+  (client-enable-handler client :read t)
+)
+
+
 

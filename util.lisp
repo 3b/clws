@@ -1,6 +1,7 @@
 (in-package #:ws)
 
 (defparameter *event-base* nil)
+;; hash of client objects to them selves (just used as a set for now)
 (defparameter *clients* nil)
 
 (defun parse-handshake (lines)
@@ -49,3 +50,7 @@ WebSocket-Protocol: ~a
            (code-char 0))
    :encoding :ascii)
 )
+
+(defun lg (&rest args)
+  (apply #'format t args)
+  (finish-output))
