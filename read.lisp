@@ -92,8 +92,7 @@
                                        (char= #\space (aref l (1+ c))))
                                   2 1)
                               c)))))
-    (values (or resource :invalid-handshake) headers))
-  )
+    (values (or resource :invalid-handshake) headers)))
 
 (defparameter *reader-fsm*
   ;; mapping of state to lambda
@@ -283,7 +282,7 @@
            (let ((f (extract-read-chunk-as-utf-8 client)))
              (client-enqueue-read client (list client f))
              (lg "got frame, next=~s, ff=~s, len=~s~%  frame = ~s~%"
-                  next ff (length b) f))
+                 next ff (length b) f))
            (values :frame-00 (if next (list :start next))))
           ((> (client-read-buffer-octets client)
               *max-read-frame-size*)
@@ -335,21 +334,21 @@
                        do
                          (lg "parsing packet in state ~s~%" state)
                          (lg "from client ~s~%" client)
-                       (setf (values next-state next-data)
-                             (funcall (gethash state *reader-fsm*)
-                                      octets client data))
-                       (lg "  -> state ~s~%" next-state)
-                       (case next-state
-                         ((:close :close-read)
-                          (client-enqueue-read client (list client :eof))
-                          (client-disconnect client :read t)
-                          (loop-finish))
-                         (:abort
-                          (format t "aborting connection~%")
-                          (client-disconnect client :abort t)
-                          (loop-finish)))
-                       (unless next-data
-                         (loop-finish))
+                         (setf (values next-state next-data)
+                               (funcall (gethash state *reader-fsm*)
+                                        octets client data))
+                         (lg "  -> state ~s~%" next-state)
+                         (case next-state
+                           ((:close :close-read)
+                            (client-enqueue-read client (list client :eof))
+                            (client-disconnect client :read t)
+                            (loop-finish))
+                           (:abort
+                            (format t "aborting connection~%")
+                            (client-disconnect client :abort t)
+                            (loop-finish)))
+                         (unless next-data
+                           (loop-finish))
                        finally (setf (client-read-state client) next-state))))
               (end-of-file ()
                 (client-enqueue-read client (list client :eof))
@@ -359,6 +358,3 @@
               ;; ... add error handlers
               ))))
   (client-enable-handler client :read t))
-
-
-

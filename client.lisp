@@ -96,9 +96,9 @@
                  (not (client-writer-active client))
                  (not (client-write-closed client)))
         (set-io-handler *event-base* fd
-                       :write (lambda (fd event exception)
-                                (declare (ignore fd event exception))
-                                (try-write-client client)))
+                        :write (lambda (fd event exception)
+                                 (declare (ignore fd event exception))
+                                 (try-write-client client)))
         (setf (client-writer-active client) t))
 
       (when (and read
@@ -131,16 +131,16 @@
   (unless (client-socket-closed client)
     (macrolet ((ignore-some-errors (&body body)
                  `(handler-case
-                     (progn ,@body)
-                   (socket-not-connected-error ()
-                     (format t "enotconn~%")
-                     nil)
-                   (isys:epipe ()
-                     (format t "epipe in disconnect~%")
-                     nil)
-                   (isys:enotconn ()
-                     (format t "enotconn in shutdown/close?")
-                     nil))))
+                      (progn ,@body)
+                    (socket-not-connected-error ()
+                      (format t "enotconn~%")
+                      nil)
+                    (isys:epipe ()
+                      (format t "epipe in disconnect~%")
+                      nil)
+                    (isys:enotconn ()
+                      (format t "enotconn in shutdown/close?")
+                      nil))))
       (let* ((socket (client-socket client))
              (fd (socket-os-fd socket)))
         (when (or read close abort)
@@ -226,3 +226,4 @@
                                                                  (car more)))
                      (setf (client-read-buffers client) nil
                            (client-read-buffer-octets client) 0))))))
+

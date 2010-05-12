@@ -48,8 +48,7 @@ WebSocket-Protocol: ~a
    (format nil "<cross-domain-policy><allow-access-from domain=\"~a\" to-ports=\"~a\" /></cross-domain-policy>~c"
            from to-port
            (code-char 0))
-   :encoding :ascii)
-)
+   :encoding :ascii))
 
 (defun lg (&rest args)
   (apply #'format t args)
