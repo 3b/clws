@@ -4,9 +4,7 @@
 (defparameter *max-read-frame-size* 8192)
 ;; default max header size in octets (not used yet?)
 (defparameter *max-header-size* 16384)
-#++
-(defparameter *header-encoding* (babel:make-external-format :ascii
-                                                            :eol-style :crlf))
+
 ;; max number of reads before reader gives up on assembling a line/frame
 ;; (temporary hack until fragments are stored more efficiently, to
 ;;  avoid wasting a bunch of space if we only get 1 octet per read or
@@ -310,9 +308,6 @@
       (error "reader kept reading on socket that should have been aborted?")))))
 
 (defun add-reader-to-client (client)
-  (lg "set up reader for connection from ~s ~s (~s)~%" (client-host client)
-      (client-port client)
-      (client-socket client))
   (setf (client-reader client)
         (lambda (fd event exception)
           (declare (ignore fd event exception))
@@ -321,10 +316,6 @@
                  (socket (client-socket client)))
             (handler-case
                 (progn
-                   (lg "read from client ~s ~s (~s)~%" (client-host client)
-                       (client-port client)
-                       (client-socket client))
-                   (lg "closed = ~s~%" (client-socket-closed client))
                   (multiple-value-bind (_octets count)
                       ;; fixme: decide on good max read chunk size
                       (receive-from socket :buffer octets :end 2048)
@@ -367,10 +358,7 @@
                 (client-disconnect client :read t))
               ;; ... add error handlers
               ))))
-  (lg "enable reader for connection from ~s ~s~%" (client-host client)
-      (client-port client))
-  (client-enable-handler client :read t)
-)
+  (client-enable-handler client :read t))
 
 
 

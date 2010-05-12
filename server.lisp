@@ -1,37 +1,5 @@
 (in-package #:ws)
 
-#++
-(defun make-server-disconnector (socket name)
-  ;; hack to make sure we don't try to remove the handlers again
-  ;; after closing the socket
-  (let ((closed nil))
-    (lambda (&key read write error close abort)
-      (unless closed
-        (let ((fd (socket-os-fd socket)))
-          ;;(break)
-          (unless (or close abort)
-            (format t "removing readers from ~s : r=~s w=~s e=~s~%" name read write error)
-            (when read
-              (remove-fd-handlers *event-base* fd :read t))
-            (when write
-              (remove-fd-handlers *event-base* fd :write t))
-            (when error
-              (remove-fd-handlers *event-base* fd :error t)))
-          (when (or close abort)
-            (format t "close connection ~s (~s)~%"  name abort)
-                                        ;(break)
-            (remove-fd-handlers *event-base* fd :read t :write t :error t)
-            (handler-case
-                (progn
-                  (shutdown socket :read t :write t)
-                  (close socket :abort abort))
-              (isys:enotconn ()
-                (format t "enotconn in shutdown/close?")
-                nil
-                ))
-            (setf closed t)
-            (remhash name *clients*)))))))
-
 (defun make-listener-handler (socket server-hook)
   (lambda (fd event exception)
     (declare (ignore fd event exception))
@@ -98,5 +66,4 @@
                (client-enqueue-write v (list v :dropped))
                (client-disconnect v :abort t))
           (close control-socket-1)
-          (close control-socket-2)
-)))))
+          (close control-socket-2))))))

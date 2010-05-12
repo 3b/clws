@@ -86,6 +86,7 @@
       (client-disconnect client :close t))))
 
 (defmethod client-enable-handler ((client client) &key read write error)
+  #++
   (lg "enable handlers for ~s:~s ~s ~s ~s~%"
       (client-host client) (client-port client) read write error)
   (when (socket-os-fd (client-socket client))
@@ -110,6 +111,7 @@
         (error "error handlers not implemented yet...")))))
 
 (defmethod client-disable-handler ((client client) &key read write error)
+  #++
   (lg "disable handlers for ~s:~s ~s ~s ~s~%"
       (client-host client) (client-port client) read write error)
   (let ((fd (socket-os-fd (client-socket client))))
@@ -126,8 +128,6 @@
   "shutdown 1 or both sides of a connection, close it if both sides shutdown"
   (lg "disconnect for ~s:~s ~s ~s / ~s ~s~%"
       (client-host client) (client-port client) read write close abort)
-  (lg "already closed = ~s (~s ~s)~%" (client-socket-closed client)
-      (client-read-closed client) (client-write-closed client))
   (unless (client-socket-closed client)
     (macrolet ((ignore-some-errors (&body body)
                  `(handler-case
