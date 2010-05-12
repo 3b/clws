@@ -63,7 +63,7 @@
                )
           (loop for v being the hash-values of *clients*
              do
-               (client-enqueue-write v (list v :dropped))
+               (client-enqueue-read v (list v :dropped))
                (client-disconnect v :abort t))
           (close control-socket-1)
           (close control-socket-2))))))
