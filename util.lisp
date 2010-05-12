@@ -3,6 +3,9 @@
 (defparameter *event-base* nil)
 ;; hash of client objects to them selves (just used as a set for now)
 (defparameter *clients* nil)
+;; max number of simultaneous clients allowed (nil for no limit)
+;; extra connections will get a HTTP 5xx response (without reading headers)
+(defparameter *max-clients* 256)
 
 (defun parse-handshake (lines)
   (format t "parsing handshake: ~s~%" lines)

@@ -1,5 +1,11 @@
 (in-package #:ws)
 
+(defparameter *server-busy-message* (babel:string-to-octets
+                             "HTTP/1. 503 service unavailable
+
+"
+                             :encoding :utf-8))
+
 (defun make-listener-handler (socket server-hook)
   (lambda (fd event exception)
     (declare (ignore fd event exception))
@@ -13,8 +19,17 @@
       (when client
         (lg "got client connection from ~s ~s~%" (client-host client)
             (client-port client))
+        (lg "client count = ~s/~s~%" (hash-table-count *clients*) *max-clients*)
         (setf (gethash client *clients*) client)
-        (add-reader-to-client client)))))
+        (cond
+          ((and *max-clients* (> (hash-table-count *clients*) *max-clients*))
+           ;; too many clients, send a server busy response and close connection
+           (client-disconnect client :read t)
+           (client-enqueue-write client *server-busy-message*)
+           (client-enqueue-write client :close))
+          (t
+           ;; otherwise handle normally
+           (add-reader-to-client client)))))))
 
 (defun run-server (port &key (addr +ipv4-unspecified+))
   (let ((*event-base* (make-instance 'event-base))
