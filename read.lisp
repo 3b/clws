@@ -42,24 +42,24 @@
     (gethash resource *resources*)))
 
 (defun handle-connection-header (client)
-  (format t "parsing handshake: ~s~%"
+  #++(format t "parsing handshake: ~s~%"
           (sb-concurrency:list-mailbox-messages (client-read-queue client)))
   (let* ((resource nil)
          (headers nil)
          (resource-line (client-dequeue-read client))
          (s1 (position #\space resource-line))
          (s2 (if s1 (position #\space resource-line :start (1+ s1)))))
-    (format t "checking header...~%")
-    (format t "s1,s2=~s ~s~%" s1 s2)
-    (format t "GET: ~s =>~s~%" (subseq resource-line 0 s1)
+    #++(format t "checking header...~%")
+    #++(format t "s1,s2=~s ~s~%" s1 s2)
+    #++(format t "GET: ~s =>~s~%" (subseq resource-line 0 s1)
             (string= "GET" (subseq resource-line 0 s1)))
-    (format t "HTTP: ~s =>~s~%" (subseq resource-line s2)
+    #++(format t "HTTP: ~s =>~s~%" (subseq resource-line s2)
             (string= " HTTP/1.1" (subseq resource-line s2)))
     (when (and s1 s2
                (string= "GET" (subseq resource-line 0 s1))
                (string= " HTTP/1.1" (subseq resource-line s2))
-               (string= "Upgrade: WebSocket" (print (client-dequeue-read client)))
-               (string= "Connection: Upgrade" (print (client-dequeue-read client))))
+               (string= "Upgrade: WebSocket" (client-dequeue-read client))
+               (string= "Connection: Upgrade" (client-dequeue-read client)))
       (setf resource (subseq resource-line (1+ s1) s2)))
 
     (when resource
@@ -281,7 +281,7 @@
            ;; look for next frame
            (let ((f (extract-read-chunk-as-utf-8 client)))
              (client-enqueue-read client (list client f))
-             (lg "got frame, next=~s, ff=~s, len=~s~%  frame = ~s~%"
+             #++(lg "got frame, next=~s, ff=~s, len=~s~%  frame = ~s~%"
                  next ff (length b) f))
            (values :frame-00 (if next (list :start next))))
           ((> (client-read-buffer-octets client)
@@ -323,7 +323,7 @@
                     (format t "(frame) read ~s octets...~%" count)
                     (when (zerop count)
                       (error 'end-of-file))
-                    (format t "  ==  |~s|~%"
+                    #++(format t "  ==  |~s|~%"
                             (babel:octets-to-string octets
                                                     :encoding :utf-8
                                                     :errorp nil))
@@ -332,12 +332,9 @@
                        for state = (client-read-state client) then next-state
                        for data = nil then next-data
                        do
-                         (lg "parsing packet in state ~s~%" state)
-                         (lg "from client ~s~%" client)
                          (setf (values next-state next-data)
                                (funcall (gethash state *reader-fsm*)
                                         octets client data))
-                         (lg "  -> state ~s~%" next-state)
                          (case next-state
                            ((:close :close-read)
                             (client-enqueue-read client (list client :eof))
