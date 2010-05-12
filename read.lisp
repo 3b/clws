@@ -222,28 +222,36 @@
                 (lg "bad header ~s~%" resource)
                 (values :abort nil))
                (t
-                ;; todo: hook up handler
-                ;; if header parsed OK, send handshake and start reading frames
-                (let ((resource-handler (valid-resource-p resource)))
-                  (format t "res=~s handler = ~s~%" resource resource-handler)
-                  (multiple-value-bind (rqueue origin handshake-resource protocol)
-                      (ws-accept-connection resource-handler resource
-                                            headers
-                                            client)
-                    (setf (client-read-queue client) rqueue)
-                    (client-enqueue-write client
-                                          (make-handshake
-                                           (or origin
-                                               (gethash "Origin" headers)
-                                               "http://127.0.0.1/")
-                                           (format nil "~a~a"
-                                                   ;; fixme: set this correctly
-                                                   "ws://127.0.0.1:12345"
-                                                   (or handshake-resource
-                                                       resource))
-                                           (or protocol
-                                               (gethash "WebSocket-Protocol" headers)
-                                               "test")))))
+                ;; if header parsed OK, see if the origin is valid
+                ;; send handshake and start reading frames
+                (destructuring-bind (resource-handler check-origin)
+                    (valid-resource-p resource)
+                  (cond
+                    ((not (funcall check-origin (gethash "Origin" headers)))
+                     (lg "got bad origin ~s~%" (gethash "Origin" headers))
+                     ;; unknown origin, just drop the connection
+                     ;; possibly should return an error code instead?
+                     (values :abort nil))
+                    (t
+                     (multiple-value-bind (rqueue origin handshake-resource protocol)
+                         (ws-accept-connection resource-handler resource
+                                               headers
+                                               client)
+                       (setf (client-read-queue client) rqueue)
+                       (client-enqueue-write client
+                                             (make-handshake
+                                              (or origin
+                                                  (gethash "Origin" headers)
+                                                  "http://127.0.0.1/")
+                                              (format nil "~a~a~a"
+                                                      "ws://"
+                                                      (or (gethash "Host" headers)
+                                                          "127.0.0.1:12345")
+                                                      (or handshake-resource
+                                                          resource))
+                                              (or protocol
+                                                  (gethash "WebSocket-Protocol" headers)
+                                                  "test")))))))
                 (values :frame-00 (if next (list :start next)))))))
           (t ;; assuming 0 length packets won't happen for now...
            ;; no LF, kill connection

@@ -14,14 +14,32 @@
 ;; fixme: make this per-server, so we can run different servers on
 ;; different ports?
 ;; fixme: add support for more complex matching than just exact match
-(defparameter *resources* (make-hash-table :test 'equal))
+(defparameter *resources* (make-hash-table :test 'equal)
+  "hash mapping resource name to (list of handler instance, origin
+ validation function, ?)")
+
+;; functions for checking origins...
+(defun any-origin (o) (declare (ignore o)) t)
+
+(defun origin-prefix (&rest prefixes)
+  (lambda (o)
+    (loop for p in prefixes
+       for m = (mismatch o p)
+       when (or (not m) (= m (length p)))
+       return t)))
+
+(defun origin-exact (&rest origins)
+  ;; fixme: probably should use something better than a linear search
+  (lambda (o)
+    (member o origins :test #'string=)))
+
 
 
 (defvar *ws-test-queue* (sb-concurrency:make-mailbox :name "ws-test-queue"))
 
 (defclass ws-resource ()
-  ((read-queue))
-)
+  ((read-queue)))
+
 (defgeneric ws-accept-connection (res resource-name headers client))
 (defmethod ws-accept-connection (res resource-name headers client)
   (format t "got connection request on ws-resource? ~s / ~s~%" res resource-name)
@@ -31,21 +49,19 @@
 
 
 
-
 (defclass ws-echo-server (ws-resource)
   ((read-queue :allocation :class :initform *ws-test-queue*)))
 
 (setf (gethash "/echo" *resources*)
-      (make-instance 'ws-echo-server))
+      (list (make-instance 'ws-echo-server)
+            (origin-prefix "http://127.0.0.1" "http://192.168.1.127")))
 
 
 (defmethod ws-accept-connection ((res ws-echo-server) resource-name headers client)
   (format t "got connection on echo server from ~s : ~s~%" (client-host client) (client-port client))
   (values (slot-value res 'read-queue)
           ;; use defaults for origin/resource/protocol for now..
-          nil nil nil)
-
-)
+          nil nil nil))
 
 
 
@@ -70,8 +86,7 @@
 
 (defun kill-echo ()
   (setf *echo-kill* t)
-  (sb-concurrency:send-message *ws-test-queue* (list nil :kill))
-)
+  (sb-concurrency:send-message *ws-test-queue* (list nil :kill)))
 #++
 (kill-echo)
 
@@ -84,7 +99,8 @@
    (clients :initform () :accessor clients)))
 
 (setf (gethash "/chat" *resources*)
-      (make-instance 'ws-chat-server))
+      (list (make-instance 'ws-chat-server)
+            (origin-prefix "http://127.0.0.1" "http://192.168.1.127")))
 
 (defmethod ws-accept-connection ((res ws-chat-server) resource-name headers client)
   (format t "add client ~s~%" client)
@@ -105,10 +121,10 @@
     (setf (clients server) (delete client (clients server)))
     (write-to-client client :close)))
 #++
-(progn
+(let ((server (car (gethash "/chat" *resources*))))
   (sb-concurrency:receive-pending-messages *ws-test-queue*)
-  (setf (clients (gethash "/chat" *resources*)) nil)
-  (loop with server = (gethash "/chat" *resources*)
+  (setf (clients server) nil)
+  (loop
     for (client data) = (sb-concurrency:receive-message *ws-test-queue*)
     until (eq data :kill)
     when client
