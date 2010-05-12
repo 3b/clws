@@ -1,6 +1,5 @@
 (in-package #:ws)
 
-(declaim (optimize (debug 3)))
 #++
 (defun make-server-disconnector (socket name)
   ;; hack to make sure we don't try to remove the handlers again

@@ -1,6 +1,5 @@
 (in-package #:ws)
 
-(declaim (optimize (debug 3)))
 ;;; per-client data
 
 (defclass client ()
@@ -80,10 +79,10 @@
       nil)
     (isys:epipe ()
       ;; client closed conection, so drop it...
-      (lg "epipe")
+      (lg "epipe~%")
       (client-disconnect client :close t))
     (socket-connection-reset-error ()
-      (lg "connection reset")
+      (lg "connection reset~%")
       (client-disconnect client :close t))))
 
 (defmethod client-enable-handler ((client client) &key read write error)
@@ -130,36 +129,44 @@
   (lg "already closed = ~s (~s ~s)~%" (client-socket-closed client)
       (client-read-closed client) (client-write-closed client))
   (unless (client-socket-closed client)
-    (let* ((socket (client-socket client))
-          (fd (socket-os-fd socket)))
-     (when (or read close abort)
-       ;; is all of this valid/useful for abort?
-       (unless (client-read-closed client)
-         (client-disable-handler client :read t)
-         (shutdown socket :read t)
-         (setf (client-read-closed client) t)))
-     (when (or write close abort)
-       ;; is all of this valid/useful for abort?
-       (unless (client-write-closed client)
-         (client-disable-handler client :write t)
-         (shutdown socket :write t)
-         (setf (client-write-closed client) t)))
-     (when (or close abort
-               (and (client-read-closed client)
-                    (client-write-closed client)))
-       ;; shouldn't need to remove read/write handlers by this point?
-       (when (or (client-reader-active client)
-                 (client-writer-active client)
-                 (client-error-active client))
-         (remove-fd-handlers *event-base* fd :read t :write t :error t))
-       (handler-case
-           (close socket :abort abort)
-         (isys:enotconn ()
-           (format t "enotconn in shutdown/close?")
-           nil
-           ))
-       (setf (client-socket-closed client) t)
-       (remhash client *clients*)))))
+    (macrolet ((ignore-some-errors (&body body)
+                 `(handler-case
+                     (progn ,@body)
+                   (socket-not-connected-error ()
+                     (format t "enotconn~%")
+                     nil)
+                   (isys:epipe ()
+                     (format t "epipe in disconnect~%")
+                     nil)
+                   (isys:enotconn ()
+                     (format t "enotconn in shutdown/close?")
+                     nil))))
+      (let* ((socket (client-socket client))
+             (fd (socket-os-fd socket)))
+        (when (or read close abort)
+          ;; is all of this valid/useful for abort?
+          (unless (client-read-closed client)
+            (ignore-some-errors (client-disable-handler client :read t))
+            (ignore-some-errors (shutdown socket :read t))
+            (setf (client-read-closed client) t)))
+        (when (or write close abort)
+          ;; is all of this valid/useful for abort?
+          (unless (client-write-closed client)
+            (ignore-some-errors (client-disable-handler client :write t))
+            (ignore-some-errors (shutdown socket :write t))
+            (setf (client-write-closed client) t)))
+        (when (or close abort
+                  (and (client-read-closed client)
+                       (client-write-closed client)))
+          ;; shouldn't need to remove read/write handlers by this point?
+          (when (or (client-reader-active client)
+                    (client-writer-active client)
+                    (client-error-active client))
+            (ignore-some-errors (remove-fd-handlers *event-base* fd :read t :write t :error t)))
+          (ignore-some-errors (close socket :abort abort))))))
+  (when (or close abort)
+    (setf (client-socket-closed client) t)
+    (remhash client *clients*)))
 
 
 

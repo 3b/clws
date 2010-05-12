@@ -1,5 +1,4 @@
 (in-package #:ws)
-(declaim (optimize (debug 3)))
 
 ;; default buffer size for reading lines/frames
 (defparameter *max-read-frame-size* 8192)
