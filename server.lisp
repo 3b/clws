@@ -61,11 +61,11 @@
                                (socket-os-fd control-socket-1)
                                :read (lambda (fd e ex)
                                        (declare (ignorable fd e ex))
-                                       (loop for m in (sb-concurrency:receive-pending-messages control-mailbox)
-                                          do (funcall m))
                                        (receive-from control-socket-1
                                                      :buffer temp
-                                                     :start 0 :end 16)))
+                                                     :start 0 :end 16)
+                                       (loop for m in (sb-concurrency:receive-pending-messages control-mailbox)
+                                          do (funcall m))))
                (set-io-handler *event-base*
                                (socket-os-fd socket)
                                :read (make-listener-handler

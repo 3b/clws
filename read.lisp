@@ -14,8 +14,9 @@
 
 ;; max number of frames that can be queued before the reader will start
 ;; throttling reads for clients using that queue
+;; (for now, just drops the connections...)
 ;; fixme: should this have a separate setting for when to reenable readers?
-(defparameter *max-handler-read-backlog* 128)
+(defparameter *max-handler-read-backlog* 256)
 
 (defparameter *policy-file* (make-domain-policy))
 (defparameter *404-message* (babel:string-to-octets
@@ -291,7 +292,13 @@
              (client-enqueue-read client (list client f))
              #++(lg "got frame, next=~s, ff=~s, len=~s~%  frame = ~s~%"
                  next ff (length b) f))
-           (values :frame-00 (if next (list :start next))))
+           (cond
+             ((> (sb-concurrency:mailbox-count (client-read-queue client))
+                 *max-handler-read-backlog*)
+              ;; fixme: handle this better
+              (values :close nil))
+             (t
+              (values :frame-00 (if next (list :start next))))))
           ((> (client-read-buffer-octets client)
               *max-read-frame-size*)
            ;; frame too big, kill connection...
@@ -350,6 +357,7 @@
                             (loop-finish))
                            (:abort
                             (format t "aborting connection~%")
+                            (client-enqueue-read client (list client :dropped))
                             (client-disconnect client :abort t)
                             (loop-finish)))
                          (unless next-data
@@ -358,6 +366,11 @@
               (end-of-file ()
                 (client-enqueue-read client (list client :eof))
                 (format t "closed connection ~s / ~s~%" (client-host client)
+                        (client-port client))
+                (client-disconnect client :read t))
+              (socket-connection-reset-error ()
+                (client-enqueue-read client (list client :eof))
+                (format t "connection reset by peer ~s / ~s~%" (client-host client)
                         (client-port client))
                 (client-disconnect client :read t))
               ;; ... add error handlers

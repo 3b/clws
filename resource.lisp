@@ -109,6 +109,7 @@
 
 
 (defun handle-frame (server client data)
+  ;(sleep 0.1)
   (loop for c in (clients server)
      ;unless (eq client c)
      do (write-to-client c (format nil "chat: ~s.~s : |~s|"
