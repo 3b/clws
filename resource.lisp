@@ -54,7 +54,7 @@
 
 (setf (gethash "/echo" *resources*)
       (list (make-instance 'ws-echo-server)
-            (origin-prefix "http://127.0.0.1" "http://192.168.1.127")))
+            (origin-prefix "http://127.0.0.1" "http://localhost")))
 
 
 (defmethod ws-accept-connection ((res ws-echo-server) resource-name headers client)
@@ -100,7 +100,7 @@
 
 (setf (gethash "/chat" *resources*)
       (list (make-instance 'ws-chat-server)
-            (origin-prefix "http://127.0.0.1" "http://192.168.1.127")))
+            (origin-prefix "http://127.0.0.1" "http://localhost")))
 
 (defmethod ws-accept-connection ((res ws-chat-server) resource-name headers client)
   (format t "add client ~s~%" client)
