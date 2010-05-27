@@ -103,22 +103,32 @@
             (origin-prefix "http://127.0.0.1" "http://localhost")))
 
 (defmethod ws-accept-connection ((res ws-chat-server) resource-name headers client)
-  (format t "add client ~s~%" client)
-  (push client (clients res))
+  (format t "add client ~s (~s)~%" client (client-port client))
+  ;; wrong thread, can't do this here...
+  ;;(push client (clients res))
+  ;; fixme: probably should do this from caller...
+  (sb-concurrency:send-message (slot-value res 'read-queue) (list client :add))
   (values (slot-value res 'read-queue) nil nil nil))
-
 
 (defun handle-frame (server client data)
   ;(sleep 0.1)
-  (loop for c in (clients server)
-     ;unless (eq client c)
-     do (write-to-client c (format nil "chat: ~s.~s : |~s|"
-                                   (client-host client)
-                                   (client-port client)
-                                   data)))
+  #++(format t "got frame ~s~%" data)
+  (let ((*print-pretty* nil))
+    #++(write-to-client client (format nil "chat: ~s.~s : |~s|"
+                                    (client-host client)
+                                    (client-port client)
+                                    data)
+)
+    (loop with msg = (format nil "chat: ~s.~s : |~s|"
+                                    (client-host client)
+                                    (client-port client)
+                                    data)
+       for c in (clients server)
+       ;;unless (eq client c)
+      do (write-to-client c msg)))
   (when (or (eq data :eof)
             (eq data :dropped))
-    (format t "removed client ~s~%" client)
+    (format t "removed client ~s (~s)~%" client (client-port client))
     (setf (clients server) (delete client (clients server)))
     (write-to-client client :close)))
 #++
@@ -127,9 +137,14 @@
   (setf (clients server) nil)
   (loop
     for (client data) = (sb-concurrency:receive-message *ws-test-queue*)
-    until (eq data :kill)
-    when client
-    do (handle-frame server client data)))
+     until (eq data :kill)
+     when (eq data :add)
+     do (push client (clients server))
+       (format t "add client ~s~%" client)
+     else when client
+     do (handle-frame server client data)
+     ;; don't hold onto client while waiting for more data
+     do (setf client nil)))
 
 #++
 (kill-echo)

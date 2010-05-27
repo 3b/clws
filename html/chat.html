@@ -25,7 +25,7 @@
 
       // Connect to Web Socket.
       // Change host/port here to your own Web Socket server.
-      ws = new WebSocket("ws://localhost:12345/chat");
+      ws = new WebSocket("ws://127.0.0.1:12345/chat");
 
       // Set event handlers.
       ws.onopen = function() {
@@ -58,8 +58,8 @@
       var log = document.getElementById("log");
       var escaped = str.replace(/&/, "&amp;").replace(/</, "&lt;").
         replace(/>/, "&gt;").replace(/"/, "&quot;"); // "
-        log.innerHTML = escaped + "<br>" + log.innerHTML;
-      //log.innerHTML = escaped;
+       // log.innerHTML = escaped + "<br>" + log.innerHTML;
+      log.innerHTML = escaped;
     }
 
   </script>

@@ -78,6 +78,7 @@
                )
           (loop for v being the hash-values of *clients*
              do
+               (format t "cleanup up dropping client ~s~%" v)
                (client-enqueue-read v (list v :dropped))
                (client-disconnect v :abort t))
           (close control-socket-1)

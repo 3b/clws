@@ -52,10 +52,13 @@
          (s2 (if s1 (position #\space resource-line :start (1+ s1)))))
     #++(format t "checking header...~%")
     #++(format t "s1,s2=~s ~s~%" s1 s2)
-    #++(format t "GET: ~s =>~s~%" (subseq resource-line 0 s1)
-            (string= "GET" (subseq resource-line 0 s1)))
-    #++(format t "HTTP: ~s =>~s~%" (subseq resource-line s2)
-            (string= " HTTP/1.1" (subseq resource-line s2)))
+    #++(format t "header : |~s~|~%" resource-line)
+    #++(when s1
+      (format t "GET: ~s =>~s~%" (subseq resource-line 0 s1)
+             (string= "GET" (subseq resource-line 0 s1))))
+    #++(when s2
+      (format t "HTTP: ~s =>~s~%" (subseq resource-line s2)
+             (string= " HTTP/1.1" (subseq resource-line s2))))
     (when (and s1 s2
                (string= "GET" (subseq resource-line 0 s1))
                (string= " HTTP/1.1" (subseq resource-line s2))
@@ -126,7 +129,7 @@
     :policy-file
     (lambda (b client state)
       (let* ((start (getf state :start))
-             (p (position 0 b :start start))
+             (p (position 0 b :start (or start 0)))
              (junk nil))
         ;; fixme: optimize for the (usual) case where we get request as 1 pkt
         (store-partial-read client b (list start p))
@@ -137,7 +140,7 @@
            ;; got a policy request, send response and close connection
            (client-enqueue-write client *policy-file*)
            (client-enqueue-write client :close)
-           (values :close nil))
+           (values :close-read nil))
           (p
            (lg "got malformed policy request = ~s~%" junk)
            ;; got a whole 0 terminated chunk, but didn't match, kill connection
@@ -164,7 +167,7 @@
     :header
     (lambda (b client state)
       (let* ((start (getf state :start))
-             (cr (position #x0d b :start start))
+             (cr (position #x0d b :start (or start 0)))
              (next (if (and cr (< (1+ cr) (length b))) (1+ cr))))
         (cond
           ((and cr (eql start cr))
@@ -184,7 +187,9 @@
            (lg "got too many fragments reading header?~%")
            (values :abort nil))
           (t
-           ;; not enough octets to tell yet, keep reading...
+           ;; not enough octets to tell yet, store what we have and
+           ;; keep reading...
+           (store-partial-read client b (list start ))
            (values :header nil)))))
     :header-lf
     (lambda (b client state)
@@ -194,8 +199,11 @@
           ((and (> (length b) start) (eql #x0a (aref b start)))
            ;; got CRLF pair, extract a string and add to queue,
            ;; then go back to reading header lines
-           (client-enqueue-read client (extract-read-chunk-as-utf-8 client))
-           (values :header (if next (list :start next))))
+           (let ((l (extract-read-chunk-as-utf-8 client)))
+             (if (zerop (length l))
+                 (values :header-final-lf (list :start start))
+                 (progn (client-enqueue-read client l)
+                        (values :header (if next (list :start next)))))))
           (t ;; assuming 0 length packets won't happen for now...
            ;; no LF, kill connection
            (lg "got CR without LF?")
@@ -218,7 +226,7 @@
                (:404
                 (client-enqueue-write client *404-message*)
                 (client-enqueue-write client :close)
-                (values :close nil))
+                (values :close-read nil))
                ((:invalid-handshake :invalid-header :invalid-resource)
                 (lg "bad header ~s~%" resource)
                 (values :abort nil))
@@ -281,7 +289,7 @@
     :frame-ff
     (lambda (b client state)
       (let* ((start (getf state :start))
-             (ff (position #xff b :start start))
+             (ff (position #xff b :start (or start 0)))
              (next (if (and ff (< (1+ ff) (length b))) (1+ ff))))
         (store-partial-read client b (list start ff))
         (cond
@@ -295,6 +303,8 @@
            (cond
              ((> (sb-concurrency:mailbox-count (client-read-queue client))
                  *max-handler-read-backlog*)
+              (format t "reader backlog = ~s, killing a client~%"
+                      (sb-concurrency:mailbox-count (client-read-queue client)))
               ;; fixme: handle this better
               (values :close nil))
              (t
@@ -335,7 +345,7 @@
                       (receive-from socket :buffer octets :end 2048)
                     (declare (ignore _octets))
                     (setf (fill-pointer octets) count)
-                    (format t "(frame) read ~s octets...~%" count)
+                    #++(format t "(frame) read ~s octets...~%" count)
                     (when (zerop count)
                       (error 'end-of-file))
                     #++(format t "  ==  |~s|~%"
@@ -353,7 +363,9 @@
                          (case next-state
                            ((:close :close-read)
                             (client-enqueue-read client (list client :eof))
-                            (client-disconnect client :read t)
+                            (client-disconnect client
+                                               :read t
+                                               :write (eq next-state :close))
                             (loop-finish))
                            (:abort
                             (format t "aborting connection~%")
@@ -367,7 +379,11 @@
                 (client-enqueue-read client (list client :eof))
                 (format t "closed connection ~s / ~s~%" (client-host client)
                         (client-port client))
-                (client-disconnect client :read t))
+                (format t "state = ~s~%" (client-read-state client))
+                (client-disconnect client :read t
+                                   :write (not (member
+                                                (client-read-state client)
+                                                '(:frame-00 :frame-ff)))))
               (socket-connection-reset-error ()
                 (client-enqueue-read client (list client :eof))
                 (format t "connection reset by peer ~s / ~s~%" (client-host client)

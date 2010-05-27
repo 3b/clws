@@ -46,6 +46,7 @@
       (loop
          unless (client-write-buffer client)
          do
+           ;(format t "w") (finish-output)
            (setf (client-write-buffer client)
                  (sb-concurrency:dequeue (client-write-queue client)))
            (setf (client-write-offset client) 0)
@@ -80,9 +81,11 @@
     (isys:epipe ()
       ;; client closed conection, so drop it...
       (lg "epipe~%")
+      (client-enqueue-read client (list client :dropped))
       (client-disconnect client :close t))
     (socket-connection-reset-error ()
       (lg "connection reset~%")
+      (client-enqueue-read client (list client :dropped))
       (client-disconnect client :close t))))
 
 (defmethod client-enable-handler ((client client) &key read write error)
@@ -124,6 +127,7 @@
     (when (and error (client-error-active client))
       (error "error handlers not implemented yet..."))))
 
+
 (defmethod client-disconnect ((client client) &key read write close abort)
   "shutdown 1 or both sides of a connection, close it if both sides shutdown"
   (lg "disconnect for ~s:~s ~s ~s / ~s ~s~%"
@@ -133,7 +137,7 @@
                  `(handler-case
                       (progn ,@body)
                     (socket-not-connected-error ()
-                      (format t "enotconn~%")
+                      (format t "enotconn ~s~%" ,(format nil "~s" body))
                       nil)
                     (isys:epipe ()
                       (format t "epipe in disconnect~%")
@@ -163,8 +167,13 @@
                     (client-writer-active client)
                     (client-error-active client))
             (ignore-some-errors (remove-fd-handlers *event-base* fd :read t :write t :error t)))
+          (format t "closing socket (abort ~s)~%" abort)
           (ignore-some-errors (close socket :abort abort))))))
-  (when (or close abort)
+  (when (or close abort
+            (and (client-read-closed client)
+                 (client-write-closed client)))
+    (format t "removing client~%")
+    ;(setf *foo* client )
     (setf (client-socket-closed client) t)
     (remhash client *clients*)))
 
@@ -202,6 +211,9 @@
                  (client-enable-handler client :write t))))))
 
 (defun client-enqueue-read (client data)
+  (when (and (consp data) (or (eq (second data) :eof)
+                              (eq (second data) :dropped)))
+    (format t "queued drop for ~s (~s)~%" client (client-port client)))
   (sb-concurrency:send-message (client-read-queue client) data))
 
 (defun client-dequeue-read (client)
@@ -209,6 +221,7 @@
 
 (defun store-partial-read (client data offset)
   ;; fixme: should check for read-buffer-octets getting too big here?
+  #++(format t "store-partial-read ~s ~s~%" data offset)
   (push (list data offset) (client-read-buffers client))
   (incf (client-read-buffer-octets client) (length data)))
 
