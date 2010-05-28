@@ -12,20 +12,20 @@
 (defun handshake (resource)
    (let ((crlf (format nil "~c~c" (code-char 13) (code-char 10))))
      (babel:string-to-octets
-      (format nil "GET ~a HTTP/1.1~a~
+      (print (format nil "GET ~a HTTP/1.1~a~
 Upgrade: WebSocket~a~
 Connection: Upgrade~a~
-Host: ~a~a~
+Host: ~a:~a~a~
 Origin: http://~a~a~
 WebSocket-Protocol: ~a~a~
 ~a"
-              resource crlf
-              crlf
-              crlf
-              *ws-host* crlf
-              *ws-host* crlf
-              "test" crlf
-              crlf))))
+               resource crlf
+               crlf
+               crlf
+               *ws-host* *ws-port* crlf
+               *ws-host* crlf
+               "test" crlf
+               crlf)))))
 
 (defun x (socket &key abort)
   (shutdown socket :read t :write t)
@@ -85,7 +85,7 @@ WebSocket-Protocol: ~a~a~
 #++
 (x  (send-handshake-fragmented (ws-connect) "/chat" 2))
 #++
-(x (read-handshake-rl (send-handshake (ws-connect) "/chat")))
+(x (read-handshake-rl (send-handshake (ws-connect) "/echo")))
 #++
 (loop for i from 1 below (length (handshake "/chat"))
    do (format t "-----------~%  --> ~s~%" i)
@@ -106,20 +106,21 @@ WebSocket-Protocol: ~a~a~
 
 
 #++
-(loop with s = (send-handshake (ws-connect) "/chat")
-   for i from 1
-   repeat 1000
-   do (write-byte 0 s)
-     (format s "test  ~s ddddddd dddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddq" i)
-     ;(format t "test ~s" i)
-     (write-byte #xff s)
-     (finish-output s)
-     (sleep 0.01)
-   finally (x s))
+(let ((*ws-host* "3bb.cc"))
+  (loop with s = (send-handshake (ws-connect) "/chat")
+    for i from 1
+    repeat 1000
+    do (write-byte 0 s)
+    (format s "test  ~s ddddddd dddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddq" i)
+                                        ;(format t "test ~s" i)
+    (write-byte #xff s)
+    (finish-output s)
+    (sleep 0.1)
+    finally (x s)))
 
 
 #++
-(loop with s = (send-handshake (ws-connect) "/chat")
+(loop with s = (send-handshake (ws-connect) "/echo")
    for i from 1
    repeat 1000
    do (write-byte 0 s)
@@ -137,12 +138,14 @@ WebSocket-Protocol: ~a~a~
 (loop
    for i below 20
    do
-     (sleep 0.01)
-     (sb-thread:make-thread
-      (lambda ()
-        (loop with s = (send-handshake (ws-connect) "/chat")
+   (sleep 0.2)
+   (sb-thread:make-thread
+    (lambda ()
+      (let (#++(*ws-host* "3bb.cc")
+               #++(*ws-port* 12346))
+       (loop with s = (send-handshake (ws-connect) "/chat")
           for i from 1
-          repeat 1000
+          repeat 2000
           do (write-byte 0 s)
           (format s "test  ~s ddddddd dddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddd dddddddddddddddddddq" i)
                                         ;(format t "test ~s" i)
@@ -150,8 +153,9 @@ WebSocket-Protocol: ~a~a~
           (finish-output s)
           (loop repeat 100
              while (ignore-errors (receive-from s :size 1024)))
-          (sleep 0.02)
-          finally (x s)))
-      :name (format nil "thread ~s" i)))
+          (sleep 0.01)
+          finally (x s))))
+    :name (format nil "thread ~s" i)))
 
 
+ 

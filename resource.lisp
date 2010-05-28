@@ -79,7 +79,7 @@
 (loop for (client data) = (sb-concurrency:receive-message *ws-test-queue*)
    until (or *echo-kill* (eq data :kill))
    when client
-   do (format t "handler got frame: ~s~%" data)
+   do #++(format t "handler got frame: ~s~%" data)
      (write-to-client client (format nil "echo: |~s|" data))
      (when (eq data :eof)
        (write-to-client client :close)))

@@ -3,6 +3,7 @@
                "iolib")
   :serial t
   :components ((:file "package")
+               (:file "sb-concurrency-patch")
                (:file "util")
                (:file "client")
                (:file "resource")

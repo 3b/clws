@@ -47,8 +47,7 @@
          unless (client-write-buffer client)
          do
            ;(format t "w") (finish-output)
-           (setf (client-write-buffer client)
-                 (sb-concurrency:dequeue (client-write-queue client)))
+           (setf (client-write-buffer client) (client-dequeue-write client))
            (setf (client-write-offset client) 0)
          ;; if we got a :close command, clean up the socket
          when (eql (client-write-buffer client) :close)
@@ -92,7 +91,8 @@
   #++
   (lg "enable handlers for ~s:~s ~s ~s ~s~%"
       (client-host client) (client-port client) read write error)
-  (when (socket-os-fd (client-socket client))
+  (when (and (not (client-socket-closed client))
+             (socket-os-fd (client-socket client)))
     (let ((fd (socket-os-fd (client-socket client))))
 
       (when (and write
@@ -172,7 +172,7 @@
   (when (or close abort
             (and (client-read-closed client)
                  (client-write-closed client)))
-    (format t "removing client~%")
+    (format t "removing client ~s~%" (client-port client))
     ;(setf *foo* client )
     (setf (client-socket-closed client) t)
     (remhash client *clients*)))
@@ -185,6 +185,9 @@
 (defun client-enqueue-write (client data)
   (sb-concurrency:enqueue data (client-write-queue client))
   (try-write-client client))
+
+(defun client-dequeue-write (client)
+  (sb-concurrency:dequeue (client-write-queue client)))
 
 (defparameter %frame-start% (make-array 1 :element-type '(unsigned-byte 8)
                                         :initial-element #x00))

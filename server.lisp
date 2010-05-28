@@ -35,14 +35,14 @@
   (let ((*event-base* (make-instance 'event-base))
         (*clients* (make-hash-table))
         (temp (make-array 16 :element-type '(unsigned-byte 8)))
-        (control-mailbox (sb-concurrency:make-mailbox :name "server-control")))
+        (control-mailbox (sb-concurrency:make-queue :name "server-control")))
     (multiple-value-bind (control-socket-1 control-socket-2)
         (make-socket-pair)
       (flet ((execute-in-server-thread (thunk)
                ;; hook for waking up the server and telling it to run
                ;; some code, for things like enabling writers when
                ;; there is new data to write
-               (sb-concurrency:send-message control-mailbox thunk)
+               (sb-concurrency:enqueue thunk control-mailbox)
                (write-byte 0 control-socket-2)
                (finish-output control-socket-2)))
         (unwind-protect
@@ -64,7 +64,8 @@
                                        (receive-from control-socket-1
                                                      :buffer temp
                                                      :start 0 :end 16)
-                                       (loop for m in (sb-concurrency:receive-pending-messages control-mailbox)
+                                       (loop for m = (sb-concurrency:dequeue control-mailbox)
+                                          while m
                                           do (funcall m))))
                (set-io-handler *event-base*
                                (socket-os-fd socket)
