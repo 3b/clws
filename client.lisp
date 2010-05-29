@@ -1,5 +1,9 @@
 (in-package #:ws)
 
+;; max number of queued write frames before dropping a client
+(defparameter *max-write-backlog* 16)
+
+
 ;;; per-client data
 
 (defclass client ()
@@ -21,7 +25,9 @@
    ;; offset into write-buffer if write-buffer is set
    (write-offset :initform 0 :accessor client-write-offset)
    ;; queue of buffers (octet vectors) to write, or :close to kill connection
-   (write-queue :initform (sb-concurrency:make-queue)
+   ;; :enable-read to reenable reader after being disabled for flow control
+   ;; (mailbox instead of queue since it tracks length)
+   (write-queue :initform (sb-concurrency:make-mailbox)
                 :reader client-write-queue)
    ;; list of partial buffers + offsets of CR/LF/etc to be decoded into
    ;; a line/frame once the end is found
@@ -42,64 +48,66 @@
 
 
 (defun try-write-client (client)
-  (flet ((enable ()
-           (let ((fd (socket-os-fd (client-socket client))))
-             (when (and (not (client-socket-closed client))
-                        fd
-                        (not (client-writer-active client))
-                        (not (client-write-closed client)))
-               (set-io-handler *event-base* fd
-                               :write (lambda (fd event exception)
-                                        (declare (ignore fd event exception))
-                                        (try-write-client client)))
-               (setf (client-writer-active client) t)))))
-    (handler-case
-        (loop
-           unless (client-write-buffer client)
-           do
-           (setf (client-write-buffer client) (client-dequeue-write client))
-           (setf (client-write-offset client) 0)
-           ;; if we got a :close command, clean up the socket
-           when (eql (client-write-buffer client) :close)
-           do
-           (client-disconnect client :close t)
-           (return-from try-write-client nil)
-           when (eql (client-write-buffer client) :enable-read)
-           do
-           (client-enable-handler client :read t)
-           (setf (client-write-buffer client) nil)
-           else when (client-write-buffer client)
-           do
-           (let ((count (send-to (client-socket client)
-                                 (client-write-buffer client)
-                                 :start (client-write-offset client)
-                                 :end (length (client-write-buffer client)))))
-             (incf (client-write-offset client) count)
-             (when (>= (client-write-offset client)
-                       (length (client-write-buffer client)))
-               (setf (client-write-buffer client) nil)))
-           ;; if we didn't write the entire buffer, make sure the writer is
-           ;; enabled, and exit the loop
-           when (client-write-buffer client)
-           do
+  (let ((fd (socket-os-fd (client-socket client))))
+    (when (and fd
+               (not (client-socket-closed client))
+               (not (client-write-closed client)))
+     (flet ((enable ()
+              (when (and (not (client-socket-closed client))
+                         (not (client-writer-active client))
+                         (not (client-write-closed client)))
+                (set-io-handler *event-base* fd
+                                :write (lambda (fd event exception)
+                                         (declare (ignore fd event exception))
+                                         (try-write-client client)))
+                (setf (client-writer-active client) t))))
+       (handler-case
+           (loop
+              unless (client-write-buffer client)
+              do
+              (setf (client-write-buffer client) (client-dequeue-write client))
+              (setf (client-write-offset client) 0)
+              ;; if we got a :close command, clean up the socket
+              when (eql (client-write-buffer client) :close)
+              do
+              (client-disconnect client :close t)
+              (return-from try-write-client nil)
+              when (eql (client-write-buffer client) :enable-read)
+              do
+              (client-enable-handler client :read t)
+              (setf (client-write-buffer client) nil)
+              else when (client-write-buffer client)
+              do
+              (let ((count (send-to (client-socket client)
+                                    (client-write-buffer client)
+                                    :start (client-write-offset client)
+                                    :end (length (client-write-buffer client)))))
+                (incf (client-write-offset client) count)
+                (when (>= (client-write-offset client)
+                          (length (client-write-buffer client)))
+                  (setf (client-write-buffer client) nil)))
+              ;; if we didn't write the entire buffer, make sure the writer is
+              ;; enabled, and exit the loop
+              when (client-write-buffer client)
+              do
+              (enable)
+              (loop-finish)
+              when (sb-concurrency:mailbox-empty-p (client-write-queue client))
+              do
+              (client-disable-handler client :write t)
+              (loop-finish))
+         (isys:ewouldblock ()
            (enable)
-           (loop-finish)
-           when (sb-concurrency:queue-empty-p (client-write-queue client))
-           do
-           (client-disable-handler client :write t)
-           (loop-finish))
-      (isys:ewouldblock ()
-        (enable)
-        nil)
-      (isys:epipe ()
-        ;; client closed conection, so drop it...
-        (lg "epipe~%")
-        (client-enqueue-read client (list client :dropped))
-        (client-disconnect client :close t))
-      (socket-connection-reset-error ()
-        (lg "connection reset~%")
-        (client-enqueue-read client (list client :dropped))
-        (client-disconnect client :close t)))))
+           nil)
+         (isys:epipe ()
+           ;; client closed conection, so drop it...
+           (lg "epipe~%")
+           (client-enqueue-read client (list client :dropped))
+           (client-disconnect client :close t))
+         (socket-connection-reset-error ()
+           (lg "connection reset~%")
+           (client-enqueue-read client (list client :dropped))
+           (client-disconnect client :close t)))))))
 
 (defmethod client-enable-handler ((client client) &key read write error)
   #++
@@ -192,17 +200,42 @@
 ;;; fixme: decide if any of these should be methods? (or others should be functions?)
 
 (defun client-enqueue-write (client data)
-  (sb-concurrency:enqueue data (client-write-queue client))
+  (sb-concurrency:send-message (client-write-queue client) data)
   (try-write-client client))
 
 (defun client-dequeue-write (client)
-  (sb-concurrency:dequeue (client-write-queue client)))
+  (sb-concurrency:receive-message-no-hang (client-write-queue client)))
 
 (defparameter %frame-start% (make-array 1 :element-type '(unsigned-byte 8)
                                         :initial-element #x00))
 (defparameter %frame-end% (make-array 1 :element-type '(unsigned-byte 8)
                                       :initial-element #xff))
 
+
+(defun %client-enqueue-write-or-kill (frame client)
+  (unless (client-write-closed client)
+    (cond
+      ((symbolp frame)
+       ;; don't count control messages against limit for now
+       )
+      ((> (sb-concurrency:mailbox-count (client-write-queue client))
+          *max-write-backlog*)
+       (format t "client write backlog = ~s, killing conectiom~%"
+               (sb-concurrency:mailbox-count (client-write-queue client)))
+       (funcall (%client-server-hook client)
+                (lambda ()
+                  (client-disconnect client :abort t)
+                  (client-enqueue-read client (list client :dropped))
+                  (sb-concurrency:receive-pending-messages
+                   (client-write-queue client)))))
+      (t
+       (sb-concurrency:send-message (client-write-queue client) frame)))))
+
+(defun make-frame-from-string (string)
+  (concatenate '(vector (unsigned-byte 8))
+               '(0)
+               (babel:string-to-octets string :encoding :utf-8)
+               '(#xff)))
 (defun write-to-client (client string)
   (unless (client-write-closed client)
     (let ((hook (%client-server-hook client)))
@@ -210,29 +243,23 @@
         ((stringp string)
          ;; this is ugly, figure out how to write in 1 chunk without encoding
          ;; to a temp buffer and copying...
-         (sb-concurrency:enqueue %frame-start% (client-write-queue client))
-         (sb-concurrency:enqueue (babel:string-to-octets string
-                                                         :encoding :utf-8)
-                                 (client-write-queue client))
-         (sb-concurrency:enqueue %frame-end% (client-write-queue client)))
+         (%client-enqueue-write-or-kill (make-frame-from-string string)
+                                        client))
         (t
          ;; fixme: verify this is something valid (like :close) before adding
-         (sb-concurrency:enqueue string (client-write-queue client))))
+         (%client-enqueue-write-or-kill string client)))
       (funcall hook
                (lambda ()
                  (client-enable-handler client :write t))))))
 
 (defun write-to-clients (clients string)
   (loop with msg = (if (stringp string)
-                       (concatenate '(vector (unsigned-byte 8))
-                                    '(0)
-                                    (babel:string-to-octets string :encoding :utf-8)
-                                    '(#xff))
+                       (make-frame-from-string string)
                        string)
      for client in clients
      do (unless (client-write-closed client)
           ;; fixme: verify this is something valid (like :close) before adding
-          (sb-concurrency:enqueue msg (client-write-queue client))))
+          (%client-enqueue-write-or-kill msg client)))
   ;; fixme: handle clients with different server hooks...
   (let ((hook (%client-server-hook (car clients))))
     (funcall hook

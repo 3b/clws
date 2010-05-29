@@ -106,7 +106,7 @@ WebSocket-Protocol: ~a~a~
 
 
 #++
-(let ((*ws-host* "3bb.cc"))
+(let (#++(*ws-host* "3bb.cc"))
   (loop with s = (send-handshake (ws-connect) "/chat")
     for i from 1
     repeat 1000
