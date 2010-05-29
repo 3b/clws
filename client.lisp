@@ -42,20 +42,34 @@
 
 
 (defun try-write-client (client)
-  (handler-case
-      (loop
-         unless (client-write-buffer client)
-         do
-           ;(format t "w") (finish-output)
+  (flet ((enable ()
+           (let ((fd (socket-os-fd (client-socket client))))
+             (when (and (not (client-socket-closed client))
+                        fd
+                        (not (client-writer-active client))
+                        (not (client-write-closed client)))
+               (set-io-handler *event-base* fd
+                               :write (lambda (fd event exception)
+                                        (declare (ignore fd event exception))
+                                        (try-write-client client)))
+               (setf (client-writer-active client) t)))))
+    (handler-case
+        (loop
+           unless (client-write-buffer client)
+           do
            (setf (client-write-buffer client) (client-dequeue-write client))
            (setf (client-write-offset client) 0)
-         ;; if we got a :close command, clean up the socket
-         when (eql (client-write-buffer client) :close)
-         do
+           ;; if we got a :close command, clean up the socket
+           when (eql (client-write-buffer client) :close)
+           do
            (client-disconnect client :close t)
            (return-from try-write-client nil)
-         when (client-write-buffer client)
-         do
+           when (eql (client-write-buffer client) :enable-read)
+           do
+           (client-enable-handler client :read t)
+           (setf (client-write-buffer client) nil)
+           else when (client-write-buffer client)
+           do
            (let ((count (send-to (client-socket client)
                                  (client-write-buffer client)
                                  :start (client-write-offset client)
@@ -64,28 +78,28 @@
              (when (>= (client-write-offset client)
                        (length (client-write-buffer client)))
                (setf (client-write-buffer client) nil)))
-         ;; if we didn't write the entire buffer, make sure the writer is
-         ;; enabled, and exit the loop
-         when (client-write-buffer client)
-         do
-           (client-enable-handler client :write t)
+           ;; if we didn't write the entire buffer, make sure the writer is
+           ;; enabled, and exit the loop
+           when (client-write-buffer client)
+           do
+           (enable)
            (loop-finish)
-         when (sb-concurrency:queue-empty-p (client-write-queue client))
-         do
+           when (sb-concurrency:queue-empty-p (client-write-queue client))
+           do
            (client-disable-handler client :write t)
            (loop-finish))
-    (isys:ewouldblock ()
-      (format t "ewouldblock~%")
-      nil)
-    (isys:epipe ()
-      ;; client closed conection, so drop it...
-      (lg "epipe~%")
-      (client-enqueue-read client (list client :dropped))
-      (client-disconnect client :close t))
-    (socket-connection-reset-error ()
-      (lg "connection reset~%")
-      (client-enqueue-read client (list client :dropped))
-      (client-disconnect client :close t))))
+      (isys:ewouldblock ()
+        (enable)
+        nil)
+      (isys:epipe ()
+        ;; client closed conection, so drop it...
+        (lg "epipe~%")
+        (client-enqueue-read client (list client :dropped))
+        (client-disconnect client :close t))
+      (socket-connection-reset-error ()
+        (lg "connection reset~%")
+        (client-enqueue-read client (list client :dropped))
+        (client-disconnect client :close t)))))
 
 (defmethod client-enable-handler ((client client) &key read write error)
   #++
@@ -98,11 +112,7 @@
       (when (and write
                  (not (client-writer-active client))
                  (not (client-write-closed client)))
-        (set-io-handler *event-base* fd
-                        :write (lambda (fd event exception)
-                                 (declare (ignore fd event exception))
-                                 (try-write-client client)))
-        (setf (client-writer-active client) t))
+        (try-write-client client))
 
       (when (and read
                  (not (client-reader-active client))
@@ -167,7 +177,6 @@
                     (client-writer-active client)
                     (client-error-active client))
             (ignore-some-errors (remove-fd-handlers *event-base* fd :read t :write t :error t)))
-          (format t "closing socket (abort ~s)~%" abort)
           (ignore-some-errors (close socket :abort abort))))))
   (when (or close abort
             (and (client-read-closed client)
@@ -213,10 +222,26 @@
                (lambda ()
                  (client-enable-handler client :write t))))))
 
+(defun write-to-clients (clients string)
+  (loop with msg = (if (stringp string)
+                       (concatenate '(vector (unsigned-byte 8))
+                                    '(0)
+                                    (babel:string-to-octets string :encoding :utf-8)
+                                    '(#xff))
+                       string)
+     for client in clients
+     do (unless (client-write-closed client)
+          ;; fixme: verify this is something valid (like :close) before adding
+          (sb-concurrency:enqueue msg (client-write-queue client))))
+  ;; fixme: handle clients with different server hooks...
+  (let ((hook (%client-server-hook (car clients))))
+    (funcall hook
+             (lambda ()
+               (loop for client in clients
+                  do (try-write-client client)
+                    #++ (client-enable-handler client :write t))))))
+
 (defun client-enqueue-read (client data)
-  (when (and (consp data) (or (eq (second data) :eof)
-                              (eq (second data) :dropped)))
-    (format t "queued drop for ~s (~s)~%" client (client-port client)))
   (sb-concurrency:send-message (client-read-queue client) data))
 
 (defun client-dequeue-read (client)
@@ -224,7 +249,6 @@
 
 (defun store-partial-read (client data offset)
   ;; fixme: should check for read-buffer-octets getting too big here?
-  #++(format t "store-partial-read ~s ~s~%" data offset)
   (push (list data offset) (client-read-buffers client))
   (incf (client-read-buffer-octets client) (length data)))
 

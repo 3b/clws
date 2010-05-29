@@ -119,18 +119,27 @@
                                     (client-port client)
                                     data)
 )
-    (loop with msg = (format nil "chat: ~s.~s : |~s|"
+    #++(loop with msg = (format nil "chat: ~s.~s : |~s|"
                                     (client-host client)
                                     (client-port client)
                                     data)
        with msgz = (concatenate '(vector (unsigned-byte 8))
                                 '(0)
                                 (babel:string-to-octets msg :encoding :utf-8)
-                              
                                 '(#xff))
        for c in (clients server)
        ;;unless (eq client c)
-      do (write-to-client c msgz)))
+          do (write-to-client c msgz))
+    (write-to-clients (clients server)
+                      (concatenate '(vector (unsigned-byte 8))
+                                   '(0)
+                                   (babel:string-to-octets
+                                    (format nil "chat: ~s.~s : |~s|"
+                                            (client-host client)
+                                            (client-port client)
+                                            data)
+                                    :encoding :utf-8)
+                                   '(#xff))))
   (when (or (eq data :eof)
             (eq data :dropped))
     (format t "removed client ~s (~s)~%" client (client-port client))
@@ -146,6 +155,8 @@
      when (eq data :add)
      do (push client (clients server))
        (format t "add client ~s~%" client)
+     else when (eq data :flow-control)
+     do (write-to-client client :enable-read)
      else when client
      do (handle-frame server client data)
      ;; don't hold onto client while waiting for more data

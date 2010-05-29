@@ -20,7 +20,7 @@
     WebSocket.__swfLocation = "/wsjs/WebSocketMain.swf";
 
     var ws;
-    
+    var count = 0;
     function init() {
 
       // Connect to Web Socket.
@@ -59,7 +59,7 @@
       var escaped = str.replace(/&/, "&amp;").replace(/</, "&lt;").
         replace(/>/, "&gt;").replace(/"/, "&quot;"); // "
        // log.innerHTML = escaped + "<br>" + log.innerHTML;
-      log.innerHTML = escaped;
+      log.innerHTML = escaped + " " + count++;
     }
 
   </script>

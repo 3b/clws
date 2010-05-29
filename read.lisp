@@ -252,12 +252,13 @@
                                               (or origin
                                                   (gethash "Origin" headers)
                                                   "http://127.0.0.1/")
-                                              (format nil "~a~a~a"
-                                                      "ws://"
-                                                      (or (gethash "Host" headers)
-                                                          "127.0.0.1:12345")
-                                                      (or handshake-resource
-                                                          resource))
+                                              (let ((*print-pretty*))
+                                                (format nil "~a~a~a"
+                                                       "ws://"
+                                                       (or (gethash "Host" headers)
+                                                           "127.0.0.1:12345")
+                                                       (or handshake-resource
+                                                           resource)))
                                               (or protocol
                                                   (gethash "WebSocket-Protocol" headers)
                                                   "test")))))))
@@ -303,10 +304,12 @@
            (cond
              ((> (sb-concurrency:mailbox-count (client-read-queue client))
                  *max-handler-read-backlog*)
-              (format t "reader backlog = ~s, killing a client~%"
-                      (sb-concurrency:mailbox-count (client-read-queue client)))
-              ;; fixme: handle this better
-              (values :close nil))
+              ;; if server isn't processing events fast enuogh, disable the
+              ;; reader temporarily and tell the handler
+              (when (client-reader-active client)
+                (client-disable-handler client :read t)
+                (client-enqueue-read client (list client :flow-control)))
+              (values :frame-00 (if next (list :start next))))
              (t
               (values :frame-00 (if next (list :start next))))))
           ((> (client-read-buffer-octets client)
@@ -379,7 +382,6 @@
                 (client-enqueue-read client (list client :eof))
                 (format t "closed connection ~s / ~s~%" (client-host client)
                         (client-port client))
-                (format t "state = ~s~%" (client-read-state client))
                 (client-disconnect client :read t
                                    :write (not (member
                                                 (client-read-state client)

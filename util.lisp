@@ -54,5 +54,5 @@ WebSocket-Protocol: ~a
    :encoding :ascii))
 
 (defun lg (&rest args)
-  (apply #'format t args)
-  (finish-output))
+  #++(apply #'format t args)
+  #++(finish-output))

@@ -35,7 +35,9 @@
   (let ((*event-base* (make-instance 'event-base))
         (*clients* (make-hash-table))
         (temp (make-array 16 :element-type '(unsigned-byte 8)))
-        (control-mailbox (sb-concurrency:make-queue :name "server-control")))
+        (control-mailbox (sb-concurrency:make-queue :name "server-control"))
+        (wake-up (make-array 1 :element-type '(unsigned-byte 8)
+                             :initial-element 0)))
     (multiple-value-bind (control-socket-1 control-socket-2)
         (make-socket-pair)
       (flet ((execute-in-server-thread (thunk)
@@ -43,8 +45,8 @@
                ;; some code, for things like enabling writers when
                ;; there is new data to write
                (sb-concurrency:enqueue thunk control-mailbox)
-               (write-byte 0 control-socket-2)
-               (finish-output control-socket-2)))
+               (ignore-errors
+                 (send-to control-socket-2 wake-up))))
         (unwind-protect
              (with-open-socket (socket :connect :passive
                                        :address-family :internet
