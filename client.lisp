@@ -44,7 +44,9 @@
    ;; reader fsm state
    (read-state :initform :maybe-policy-file :accessor client-read-state)
    ;; read handler for this queue/socket
-   (reader :initform nil :accessor client-reader)))
+   (reader :initform nil :accessor client-reader)
+   ;; space for handler to store connection specific data
+   (handler-data :initform nil :accessor client-handler-data)))
 
 ;; fixme: should the cilent remember which *event-base* it uses so
 ;; these can work from other threads too?
@@ -267,20 +269,21 @@
                  (client-enable-handler client :write t))))))
 
 (defun write-to-clients (clients string)
-  (loop with msg = (if (stringp string)
-                       (make-frame-from-string string)
-                       string)
-     for client in clients
-     do (unless (client-write-closed client)
-          ;; fixme: verify this is something valid (like :close) before adding
-          (%client-enqueue-write-or-kill msg client)))
+  (when clients
+    (loop with msg = (if (stringp string)
+                        (make-frame-from-string string)
+                        string)
+      for client in clients
+      do (unless (client-write-closed client)
+           ;; fixme: verify this is something valid (like :close) before adding
+           (%client-enqueue-write-or-kill msg client)))
   ;; fixme: handle clients with different server hooks...
-  (let ((hook (%client-server-hook (car clients))))
-    (funcall hook
-             (lambda ()
-               (loop for client in clients
-                  do (try-write-client client)
-                    #++ (client-enable-handler client :write t))))))
+    (let ((hook (%client-server-hook (car clients))))
+      (funcall hook
+               (lambda ()
+                 (loop for client in clients
+                    do (try-write-client client)
+                    #++ (client-enable-handler client :write t)))))))
 
 (defun client-enqueue-read (client data)
   (sb-concurrency:send-message (client-read-queue client) data))
