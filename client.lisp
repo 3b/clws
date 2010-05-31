@@ -13,9 +13,9 @@
    (server-hook :initarg :server-hook :reader %client-server-hook)
    (socket :initarg :socket :reader client-socket)
    ;; flags indicating the read/write handlers are active
-   (reader-active :initform nil :accessor client-reader-active)
-   (writer-active :initform nil :accessor client-writer-active)
-   (error-active :initform nil :accessor client-error-active)
+   ;(reader-active :initform nil :accessor client-reader-active)
+   ;(writer-active :initform nil :accessor client-writer-active)
+   ;(error-active :initform nil :accessor client-error-active)
    ;; flags indicating (one side of) the connection is closed
    (read-closed :initform nil :accessor client-read-closed)
    (write-closed :initform nil :accessor client-write-closed)
@@ -46,6 +46,14 @@
    ;; read handler for this queue/socket
    (reader :initform nil :accessor client-reader)))
 
+;; fixme: should the cilent remember which *event-base* it uses so
+;; these can work from other threads too?
+(defmethod client-reader-active ((client client))
+  (iolib.multiplex::fd-monitored-p *event-base* (socket-os-fd (client-socket client)) :read))
+(defmethod client-writer-active ((client client))
+  (iolib.multiplex::fd-monitored-p *event-base* (socket-os-fd (client-socket client)) :write))
+(defmethod client-error-active ((client client))
+  (iolib.multiplex::fd-has-error-handler-p *event-base* (socket-os-fd (client-socket client))))
 
 (defun try-write-client (client)
   (let ((fd (socket-os-fd (client-socket client))))
@@ -60,7 +68,7 @@
                                 :write (lambda (fd event exception)
                                          (declare (ignore fd event exception))
                                          (try-write-client client)))
-                (setf (client-writer-active client) t))))
+                #++(setf (client-writer-active client) t))))
        (handler-case
            (loop
               unless (client-write-buffer client)
@@ -110,7 +118,6 @@
            (client-disconnect client :close t)))))))
 
 (defmethod client-enable-handler ((client client) &key read write error)
-  #++
   (lg "enable handlers for ~s:~s ~s ~s ~s~%"
       (client-host client) (client-port client) read write error)
   (when (and (not (client-socket-closed client))
@@ -121,27 +128,33 @@
                  (not (client-writer-active client))
                  (not (client-write-closed client)))
         (try-write-client client))
-
+      (when read (format t "enable read ~s ~s ~s~%"
+                         fd
+                         (client-reader-active client)
+                         (client-read-closed client)))
       (when (and read
                  (not (client-reader-active client))
                  (not (client-read-closed client)))
         (set-io-handler *event-base* fd :read (client-reader client))
-        (setf (client-reader-active client) t))
+        #++(setf (client-reader-active client) t))
 
       (when (and error (not (client-error-active client)))
         (error "error handlers not implemented yet...")))))
 
 (defmethod client-disable-handler ((client client) &key read write error)
-  #++
   (lg "disable handlers for ~s:~s ~s ~s ~s~%"
       (client-host client) (client-port client) read write error)
   (let ((fd (socket-os-fd (client-socket client))))
     (when (and write (client-writer-active client))
       (remove-fd-handlers *event-base* fd :write t)
-      (setf (client-writer-active client) nil))
+      #++(setf (client-writer-active client) nil))
+      (when read (format t "disable read ~s ~s ~s~%"
+                         fd
+                         (client-reader-active client)
+                         (client-read-closed client)))
     (when (and read (client-reader-active client))
       (remove-fd-handlers *event-base* fd :read t)
-      (setf (client-reader-active client) nil))
+      #++(setf (client-reader-active client) nil))
     (when (and error (client-error-active client))
       (error "error handlers not implemented yet..."))))
 
@@ -155,7 +168,8 @@
                  `(handler-case
                       (progn ,@body)
                     (socket-not-connected-error ()
-                      (format t "enotconn ~s~%" ,(format nil "~s" body))
+                      (format t "enotconn ~s ~s ~s~%" ,(format nil "~s" body)
+                              (client-port client) fd)
                       nil)
                     (isys:epipe ()
                       (format t "epipe in disconnect~%")
