@@ -30,7 +30,7 @@
     (values resource headers)))
 
 
-(defun make-handshake (origin location protocol)
+(defun make-handshake-75 (origin location protocol)
   (babel:string-to-octets
    (format nil "HTTP/1.1 101 Web Socket Protocol Handshake
 Upgrade: WebSocket
@@ -43,8 +43,27 @@ WebSocket-Protocol: ~a
            origin
            location
            protocol)
-   :encoding :ascii))
+   :encoding :utf-8))
 
+(defun make-handshake-76 (origin location protocol)
+  (babel:string-to-octets
+   (format nil "HTTP/1.1 101 Web Socket Protocol Handshake
+Upgrade: WebSocket
+Connection: Upgrade
+Sec-WebSocket-Origin: ~a
+Sec-WebSocket-Location: ~a
+Sec-WebSocket-Protocol: ~a
+
+"
+           origin
+           location
+           protocol)
+   :encoding :utf-8))
+
+(defun make-handshake (origin location protocol version)
+  (ecase version
+    (:draft-75 (make-handshake-75 origin location protocol))
+    (:draft-76 (make-handshake-76 origin location protocol))))
 
 (defun make-domain-policy (&key (from "*") (to-port "*"))
   (babel:string-to-octets

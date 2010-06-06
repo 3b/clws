@@ -27,6 +27,29 @@ WebSocket-Protocol: ~a~a~
                "test" crlf
                crlf)))))
 
+(defun handshake-76 (resource)
+   (let ((crlf (format nil "~c~c" (code-char 13) (code-char 10))))
+     (babel:string-to-octets
+      (print (format nil "GET ~a HTTP/1.1~a~
+Upgrade: WebSocket~a~
+Connection: Upgrade~a~
+Host: ~a:~a~a~
+Origin: http://~a~a~
+WebSocket-Protocol: ~a~a~
+Sec-WebSocket-Key1: 3e6b263  4 17 80~a~
+Sec-WebSocket-Key2: 17  9 G`ZD9   2 2b 7X 3 /r90~a~
+~a~
+WjN}|M(6"
+               resource crlf
+               crlf
+               crlf
+               *ws-host* *ws-port* crlf
+               *ws-host* crlf
+               "test" crlf
+               crlf
+               crlf
+               crlf)))))
+
 (defun x (socket &key abort)
   (ignore-errors (shutdown socket :read t :write t))
   (close socket :abort abort))
@@ -46,6 +69,11 @@ WebSocket-Protocol: ~a~a~
 ;(close (ws-connect) :abort t)
 (defun send-handshake (socket resource)
   (let ((handshake (handshake resource)))
+    (send-to socket handshake))
+  socket)
+
+(defun send-handshake-76 (socket resource)
+  (let ((handshake (handshake-76 resource)))
     (send-to socket handshake))
   socket)
 
@@ -74,7 +102,9 @@ WebSocket-Protocol: ~a~a~
                     (isys:ewouldblock ()
                       nil)))
      do (sleep 0.01)
-       (when i (format t "read |~s|~%" (babel:octets-to-string i :encoding :utf-8 :end l))))
+       (when i
+         (format t "read |~s|~%" (babel:octets-to-string i :encoding :utf-8 :end l :errorp nil))
+         (format t "read (~{0x~2,'0x ~})~%" (coerce (subseq i (max 0 (- l 16)) l) 'list))))
   socket)
 (defun read-handshake-rl (socket)
   (loop repeat 7
@@ -82,6 +112,8 @@ WebSocket-Protocol: ~a~a~
   socket)
 #++
 (x  (send-handshake (ws-connect) "/chat"))
+#++
+(x (read-handshake (send-handshake-76 (ws-connect) "/chat")))
 #++
 (x  (send-handshake-fragmented (ws-connect) "/chat" 2))
 #++
@@ -106,7 +138,7 @@ WebSocket-Protocol: ~a~a~
 
 
 #++
-(let (#++(*ws-host* "3bb.cc"))
+(let ((*ws-host* "3bb.cc"))
   (loop with s = (send-handshake (ws-connect) "/chat")
     for i from 1
     repeat 1000

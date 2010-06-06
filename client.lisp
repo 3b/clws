@@ -46,7 +46,11 @@
    ;; read handler for this queue/socket
    (reader :initform nil :accessor client-reader)
    ;; space for handler to store connection specific data
-   (handler-data :initform nil :accessor client-handler-data)))
+   (handler-data :initform nil :accessor client-handler-data)
+   ;; probably don't need to hold onto these for very long, but easier to
+   ;; store here trhan pass around while parsing handshake
+   (connection-headers :initform nil :accessor client-connection-headers)
+   ))
 
 ;; fixme: should the cilent remember which *event-base* it uses so
 ;; these can work from other threads too?

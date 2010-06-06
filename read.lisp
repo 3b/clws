@@ -26,6 +26,8 @@
                              :encoding :utf-8))
 
 
+(defparameter *allow-draft-75* t)
+
 #+not-done-yet
 (defun disable-readers-for-queue (client)
   (loop for c being the hash-values of *clients*
@@ -61,9 +63,7 @@
              (string= " HTTP/1.1" (subseq resource-line s2))))
     (when (and s1 s2
                (string= "GET" (subseq resource-line 0 s1))
-               (string= " HTTP/1.1" (subseq resource-line s2))
-               (string= "Upgrade: WebSocket" (client-dequeue-read client))
-               (string= "Connection: Upgrade" (client-dequeue-read client)))
+               (string= " HTTP/1.1" (subseq resource-line s2)))
       (setf resource (subseq resource-line (1+ s1) s2)))
 
     (when resource
@@ -78,7 +78,8 @@
         (return-from handle-connection-header
           (values :404 nil)))
       ;; otherwise try to parse remaining headers
-      (setf headers (make-hash-table :test 'equal))
+      ;; (headers field names are case insensitive so use equalp)
+      (setf headers (make-hash-table :test 'equalp))
       (loop for l = (client-dequeue-read client)
          while l
          for c = (position #\: l)
@@ -98,6 +99,31 @@
                               c)))))
     (values (or resource :invalid-handshake) headers)))
 
+(defun extract-key (k)
+  (when k
+    (loop
+       with n = 0
+       for i across k
+       when (char= i #\space)
+       count 1 into spaces
+       when (digit-char-p i)
+       do (setf n (+ (* n 10) (digit-char-p i)))
+       finally (return
+                 (multiple-value-bind (d r) (floor n spaces)
+                   #++(Format t "got key = ~s -> ~s (~s)~%" n d r)
+                   (when (zerop r)
+                     d))))))
+;; (extract-key "3e6b263  4 17 80") -> 906585445
+;; (extract-key "17  9 G`ZD9   2 2b 7X 3 /r90") -> 179922739
+
+(Defun make-challenge (k1 k2)
+  (let ((b (make-array 16 :element-type '(unsigned-byte 8))))
+    (loop for i from 0 below 4
+       for j from 24 downto 0 by 8
+       do (setf (aref b i) (ldb (byte 8 j) k1))
+       do (setf (aref b (+ 4 i)) (ldb (byte 8 j) k2)))
+    #++(format t "made challenge  (~{0x~2,'0x ~}) ~%" (coerce b 'list))
+    b))
 (defparameter *reader-fsm*
   ;; mapping of state to lambda
 
@@ -211,13 +237,15 @@
     :header-final-lf
     (lambda (b client state)
       (let* ((start (or (getf state :start) 0))
-             (next (if (< (1+ start) (length b)) (1+ start))))
+             (next (if (< (1+ start) (length b)) (1+ start)))
+             k1 k2)
         (cond
           ((and (> (length b) start) (eql #x0a (aref b start)))
            ;; got final CRLF pair, parse the header
            ;; then go to frame mode
            (multiple-value-bind (resource headers)
                (handle-connection-header client)
+             (setf (client-connection-headers client) headers)
              ;; fixme: probably should dispatch on type or something
              ;; so we can catch unexpected other symbols if
              ;; handle-connection-header is modified without matching
@@ -231,42 +259,108 @@
                 (lg "bad header ~s~%" resource)
                 (values :abort nil))
                (t
-                ;; if header parsed OK, see if the origin is valid
-                ;; send handshake and start reading frames
-                (destructuring-bind (resource-handler check-origin)
-                    (valid-resource-p resource)
-                  (cond
-                    ((not (funcall check-origin (gethash "Origin" headers)))
-                     (lg "got bad origin ~s~%" (gethash "Origin" headers))
-                     ;; unknown origin, just drop the connection
-                     ;; possibly should return an error code instead?
-                     (values :abort nil))
-                    (t
-                     (multiple-value-bind (rqueue origin handshake-resource protocol)
-                         (ws-accept-connection resource-handler resource
-                                               headers
-                                               client)
-                       (setf (client-read-queue client) rqueue)
-                       (client-enqueue-write client
-                                             (make-handshake
-                                              (or origin
-                                                  (gethash "Origin" headers)
-                                                  "http://127.0.0.1/")
-                                              (let ((*print-pretty*))
-                                                (format nil "~a~a~a"
-                                                       "ws://"
-                                                       (or (gethash "Host" headers)
-                                                           "127.0.0.1:12345")
-                                                       (or handshake-resource
-                                                           resource)))
-                                              (or protocol
-                                                  (gethash "WebSocket-Protocol" headers)
-                                                  "test")))))))
-                (values :frame-00 (if next (list :start next)))))))
+                (cond
+                  ((and (string= (gethash "Connection" headers "") "Upgrade")
+                        (string= (gethash "Upgrade" headers "") "WebSocket")
+                        (setf k1 (extract-key (gethash "Sec-WebSocket-Key1"
+                                                       headers nil)))
+                        (setf k2 (extract-key (gethash "Sec-WebSocket-Key2"
+                                                       headers nil))))
+                   (values :draft-76-key3
+                           `(,@(if next (list :start next))
+                               :resource ,resource
+                               :count 0
+                               :octets ,(make-challenge k1 k2)
+                               )))
+                  ((and *allow-draft-75* ;; fixme: don't duplicate these
+                        (string= (gethash "Connection" headers "") "Upgrade")
+                        (string= (gethash "Upgrade" headers "") "WebSocket"))
+                   (values :handshake-done `(,@(if next (list :start next))
+                                               :resource ,resource
+                                               :version :draft-75)))
+                  (t ;; bad header
+                   (values :abort nil)))))))
           (t ;; assuming 0 length packets won't happen for now...
            ;; no LF, kill connection
            (lg "got CR without LF on final header line?")
            (values :abort nil)))))
+
+    ;; using draft 76 or later, check for key3 octets
+    :draft-76-key3
+    (lambda (b client state)
+      (let* ((count (getf state :count))
+             (octets (getf state :octets))
+             (start (getf state :start 0))
+             (next nil)
+             (needed (- 8 count)))
+        (cond
+          ((and (>= (- (length b) start) needed))
+           ;; we can finish the challenge, do so
+           (replace octets b :start2 start :end2 (+ start needed)
+                    :start1 (+ 8 count) :end1 16)
+           (when (< (+ start needed) (length b))
+             (setf next (+ start needed)))
+           (values :handshake-done
+                   `(,@(if next (list :start next))
+                       :resource ,(getf state :resource)
+                       :challenge-response ,(ironclad:digest-sequence
+                                            'ironclad:md5 octets)
+                       :version :draft-76)))
+          ((and (> (length b) start))
+           ;; todo : read partial key3
+           (format t "fragmented key3?~%")
+           (format t " octets remaining = ~s~%"
+                   (subseq b start))
+           (values :abort nil))
+          (t ;; assuming 0 length packets won't happen for now...
+           (format t "draft-76-challenge broken?")
+           (values :abort nil)))))
+
+
+    ;; finished handshake, start connectioon
+    :handshake-done
+    (lambda (b client state)
+      (declare (ignore b))
+      ;; if header parsed OK, see if the origin is valid
+      ;; send handshake and start reading frames
+      (let ((headers (client-connection-headers client))
+            (next (getf state :start))
+            (resource (getf state :resource))
+            (version (getf state :version))
+            (challenge-response (getf state :challenge-response)))
+        (destructuring-bind (resource-handler check-origin)
+           (valid-resource-p resource)
+         (cond
+           ((not (funcall check-origin (gethash "Origin" headers)))
+            (lg "got bad origin ~s~%" (gethash "Origin" headers))
+            ;; unknown origin, just drop the connection
+            ;; possibly should return an error code instead?
+            (values :abort nil))
+           (t
+            (multiple-value-bind (rqueue origin handshake-resource protocol)
+                (ws-accept-connection resource-handler resource
+                                      headers
+                                      client)
+              (setf (client-read-queue client) rqueue)
+              (client-enqueue-write client
+                                    (make-handshake
+                                     (or origin
+                                         (gethash "Origin" headers)
+                                         "http://127.0.0.1/")
+                                     (let ((*print-pretty*))
+                                       (format nil "~a~a~a"
+                                               "ws://"
+                                               (or (gethash "Host" headers)
+                                                   "127.0.0.1:12345")
+                                               (or handshake-resource
+                                                   resource)))
+                                     (or protocol
+                                         (gethash "WebSocket-Protocol" headers)
+                                         "test")
+                                     version))
+              (when challenge-response
+                (client-enqueue-write client challenge-response)))
+            (values :frame-00 (if next (list :start next))))))))
 
 
     ;; for now only handling 00.ff frames, not other text/binary frame types
