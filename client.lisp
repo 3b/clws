@@ -256,6 +256,7 @@
                '(0)
                (babel:string-to-octets string :encoding :utf-8)
                '(#xff)))
+(defparameter *close-frame* (make-array 2 :element-type))
 (defun write-to-client (client string)
   (unless (client-write-closed client)
     (let ((hook (%client-server-hook client)))
@@ -265,6 +266,11 @@
          ;; to a temp buffer and copying...
          (%client-enqueue-write-or-kill (make-frame-from-string string)
                                         client))
+        ((eq string :close)
+         ;; draft-76/00 adds a close handshake, so enqueue that as
+         ;; well when closing socket
+         (%client-enqueue-write-or-kill *close-frame* client)
+         (%client-enqueue-write-or-kill string client))
         (t
          ;; fixme: verify this is something valid (like :close) before adding
          (%client-enqueue-write-or-kill string client)))

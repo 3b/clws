@@ -1,6 +1,7 @@
 (defsystem :clws
   :depends-on ("sb-concurrency"
-               "iolib")
+               "iolib"
+               "ironclad")
   :serial t
   :components ((:file "package")
                (:file "sb-concurrency-patch")

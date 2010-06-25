@@ -58,8 +58,8 @@
       var log = document.getElementById("log");
       var escaped = str.replace(/&/, "&amp;").replace(/</, "&lt;").
         replace(/>/, "&gt;").replace(/"/, "&quot;"); // "
-       // log.innerHTML = escaped + "<br>" + log.innerHTML;
-      log.innerHTML = escaped + " " + count++;
+       log.innerHTML = escaped + "<br>" + log.innerHTML;
+      //log.innerHTML = escaped + " " + count++;
     }
 
   </script>

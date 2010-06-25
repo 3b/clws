@@ -373,6 +373,9 @@
           ((and (> (length b) start) (eql #x00 (aref b start)))
            ;; got beginning of frame marker, look for end...
            (values :frame-ff (if next (list :start next))))
+          ((and (> (length b) start) (eql #xff (aref b start)))
+           ;; got binary frame/close frame marker, look for end...
+           (values :bin-frame-length (if next (list :start next))))
           (t
            ;; got empty packet (something broken?) or unsupported frame type
            ;; (or junk between frames)
@@ -418,6 +421,20 @@
           (t
            ;; not enough octets to tell yet, keep reading...
            (values :frame-ff nil)))))
+
+    :bin-frame-length
+    (lambda (b client state)
+      (let* ((start (or (getf state :start) 0))
+             #++(next (if (< (1+  start) (length b)) (1+ start))))
+        (cond
+          ((and (> (length b) start) (eql #x00 (aref b start)))
+           ;; got draft-76/00 close frame, close connection
+           ;; read handler sends :eof to handler, so relying on that for now
+           (values :close-read nil))
+          (t
+           ;; other binary frames not supported yet, kill connection...
+           (lg "got unsupported binary frame?")
+           (values :abort nil)))))
 
     :close
     (lambda (&rest r)
