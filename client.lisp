@@ -256,7 +256,10 @@
                '(0)
                (babel:string-to-octets string :encoding :utf-8)
                '(#xff)))
-(defparameter *close-frame* (make-array 2 :element-type))
+
+(defparameter *close-frame* (make-array 2 :element-type '(unsigned-byte 8)
+                                        :initial-contents '(#xff #x00)))
+
 (defun write-to-client (client string)
   (unless (client-write-closed client)
     (let ((hook (%client-server-hook client)))
