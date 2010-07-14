@@ -461,6 +461,8 @@ pass to next call"
       (error "reader kept reading on socket that should have been aborted?")))))
 
 (defun add-reader-to-client (client)
+  "Supplies the client with a reader function responsible for
+processing input coming in from the client."
   (setf (client-reader client)
         (lambda (fd event exception)
           (declare (ignore fd event exception))
@@ -481,29 +483,34 @@ pass to next call"
                             (babel:octets-to-string octets
                                                     :encoding :utf-8
                                                     :errorp nil))
-                    (loop with next-state
-                       with next-data
-                       for state = (client-read-state client) then next-state
-                       for data = nil then next-data
-                       do
-                         (setf (values next-state next-data)
-                               (funcall (gethash state *reader-fsm*)
-                                        octets client data))
-                         (case next-state
-                           ((:close :close-read)
-                            (client-enqueue-read client (list client :eof))
-                            (client-disconnect client
-                                               :read t
-                                               :write (eq next-state :close))
-                            (loop-finish))
-                           (:abort
-                            (format t "aborting connection~%")
-                            (client-enqueue-read client (list client :dropped))
-                            (client-disconnect client :abort t)
-                            (loop-finish)))
-                         (unless next-data
+                    (loop 
+                      :with next-state
+                      :with next-data
+                      :for state = (client-read-state client) :then next-state
+                      :for data = nil :then next-data
+                      :do
+                      ;; Perform the finite-state-machine transition
+                      (setf (values next-state next-data)
+                            (funcall (gethash state *reader-fsm*)
+                                     octets client data))
+
+                      ;; Handle special-cased FSM states
+                      (case next-state
+                        ((:close :close-read)
+                           (client-enqueue-read client (list client :eof))
+                           (client-disconnect client
+                                              :read t
+                                              :write (eq next-state :close))
                            (loop-finish))
-                       finally (setf (client-read-state client) next-state))))
+                        (:abort
+                           (format t "aborting connection~%")
+                           (client-enqueue-read client (list client :dropped))
+                           (client-disconnect client :abort t)
+                           (loop-finish)))
+                      (unless next-data
+                        (loop-finish))
+                      :finally (setf (client-read-state client) next-state))))
+              ;; close connection on socket/read errors
               (end-of-file ()
                 (client-enqueue-read client (list client :eof))
                 (format t "closed connection ~s / ~s~%" (client-host client)

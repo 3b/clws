@@ -124,6 +124,11 @@
            (client-enqueue-read client (list client :dropped))
            (client-disconnect client :close t)))))))
 
+(defgeneric client-enable-handler (client &key read write error)
+  (:documentation "Enables the read, write, or error handler for a a
+client.  Once a read handler is set up, the client can handle the
+handshake coming in from the client."))
+
 (defmethod client-enable-handler ((client client) &key read write error)
   (lg "enable handlers for ~s:~s ~s ~s ~s~%"
       (client-host client) (client-port client) read write error)

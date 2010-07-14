@@ -40,6 +40,12 @@ closed.  Intended to run in a dedicated thread."
         (control-mailbox (sb-concurrency:make-queue :name "server-control"))
         (wake-up (make-array 1 :element-type '(unsigned-byte 8)
                              :initial-element 0)))
+
+    ;; To be clear, there are three sockets used for a server.  The
+    ;; main one is the WebSockets server (socket).  There is also a
+    ;; pair of connected sockets (control-socket-1 control-socket-2)
+    ;; used merely as a means of making the server thread execute a
+    ;; lambda from a different thread.
     (multiple-value-bind (control-socket-1 control-socket-2)
         (make-socket-pair)
       (flet ((execute-in-server-thread (thunk)
