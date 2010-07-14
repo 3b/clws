@@ -14,13 +14,13 @@
 wasting a bunch of space if we only get 1 octet per read or
 whatever.\)
 
-Currently allocating 2kio/read, so stores multiples of that."
+Currently allocating 2kio/read, so stores multiples of that.")
 
 ;; fixme: should this have a separate setting for when to reenable readers?
 (defparameter *max-handler-read-backlog* 256
   "Max number of frames that can be queued before the reader will
  start throttling reads for clients using that queue (for now, just
- drops the connections...)."
+ drops the connections...).")
 
 (defparameter *policy-file* (make-domain-policy)
   "cross-domain policy file, used for the Flash WebSocket emulator.")
@@ -139,11 +139,8 @@ of the resource requested as a string.
        do (setf (aref b (+ 4 i)) (ldb (byte 8 j) k2)))
     #++(format t "made challenge  (~{0x~2,'0x ~}) ~%" (coerce b 'list))
     b))
-(defparameter *reader-fsm*
-  "Mapping of state to lambda.
 
-- lambda handles a buffer, and returns new state + extra state info to
-pass to next call"
+(defparameter *reader-fsm*
   (alexandria:plist-hash-table
    (list
     ;; in order to support the .swf websocket emulation, we optionally
@@ -458,7 +455,11 @@ pass to next call"
     :abort
     (lambda (&rest r)
       (declare (ignore r))
-      (error "reader kept reading on socket that should have been aborted?")))))
+      (error "reader kept reading on socket that should have been aborted?"))))
+  "Mapping of state to lambda.
+
+- lambda handles a buffer, and returns new state + extra state info to
+pass to next call")
 
 (defun add-reader-to-client (client)
   "Supplies the client with a reader function responsible for

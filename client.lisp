@@ -1,60 +1,70 @@
 (in-package #:ws)
 
-;; max number of queued write frames before dropping a client
-(defparameter *max-write-backlog* 16)
-
-
-;;; per-client data
+(defparameter *max-write-backlog* 16
+  "Max number of queued write frames before dropping a client.")
 
 (defclass client ()
   ((port :initarg :port :reader client-port)
    (host :initarg :host :reader client-host)
-   ;; function to call to send a command to the network thread from other threads
-   (server-hook :initarg :server-hook :reader %client-server-hook)
-   (socket :initarg :socket :reader client-socket)
-   ;; flags indicating the read/write handlers are active
-   ;(reader-active :initform nil :accessor client-reader-active)
-   ;(writer-active :initform nil :accessor client-writer-active)
-   ;(error-active :initform nil :accessor client-error-active)
-   ;; flags indicating (one side of) the connection is closed
-   (read-closed :initform nil :accessor client-read-closed)
-   (write-closed :initform nil :accessor client-write-closed)
-   (closed :initform nil :accessor client-socket-closed)
-   ;; buffer being written currently, if last write couldn't send whole thing
-   (write-buffer :initform nil :accessor client-write-buffer)
-   ;; offset into write-buffer if write-buffer is set
-   (write-offset :initform 0 :accessor client-write-offset)
-   ;; queue of buffers (octet vectors) to write, or :close to kill connection
-   ;; :enable-read to reenable reader after being disabled for flow control
-   ;; (mailbox instead of queue since it tracks length)
+   (server-hook :initarg :server-hook :reader %client-server-hook
+                :documentation "Function to call to send a command to
+                the network thread from other threads")
+   (socket :initarg :socket :reader client-socket
+           :documentation "Bidirectional socket stream used for communicating with
+           the client.")
+   (read-closed :initform nil :accessor client-read-closed
+                :documentation "Flag indicates read side of the
+                connection is closed")
+   (write-closed :initform nil :accessor client-write-closed
+                :documentation "Flag indicates write side of the
+                connection is closed")
+   (closed :initform nil :accessor client-socket-closed
+           :documentation "Flag indicates connection is closed")
+
+   (write-buffer :initform nil :accessor client-write-buffer
+                 :documentation "Buffer being written currently, if
+                 last write couldn't send whole thing")
+   (write-offset :initform 0 :accessor client-write-offset
+                 :documentation "Offset into write-buffer if
+                 write-buffer is set")
    (write-queue :initform (make-mailbox)
-                :reader client-write-queue)
-   ;; list of partial buffers + offsets of CR/LF/etc to be decoded into
-   ;; a line/frame once the end is found
-   ;; offsets are inclusive start/end pairs, NIL for continued from previous
-   ;;   or continued to next chunk
-   (read-buffers :initform nil :accessor client-read-buffers)
-   ;; total octets in read-buffers (so we can reject overly large frames/headers)
-   ;; fixme: probably should hide write access to counts behind functions that manipulate the buffer?
-   (read-buffer-octets :initform 0 :accessor client-read-buffer-octets)
-   ;; queue of decoded lines/frames
+                :reader client-write-queue
+                :documentation "Queue of buffers (octet vectors) to
+                write, or :close to kill connection :enable-read to
+                reenable reader after being disabled for flow
+                control (mailbox instead of queue since it tracks
+                length).")
+   (read-buffers :initform nil :accessor client-read-buffers
+                 :documentation "List of partial buffers + offsets of
+                 CR/LF/etc to be decoded into a line/frame once the
+                 end is found offsets are inclusive start/end pairs,
+                 NIL for continued from previous or continued to next
+                 chunk")
+   ;; fixme: probably should hide write access to counts behind
+   ;; functions that manipulate the buffer?
+   (read-buffer-octets :initform 0 :accessor client-read-buffer-octets
+                       :documentation "Total octets in
+                       read-buffers (so we can reject overly large
+                       frames/headers)")
    (read-queue :initform (make-mailbox)
                ;; possibly should have separate writer?
-               :accessor client-read-queue)
-   ;; reader fsm state
-   (read-state :initform :maybe-policy-file :accessor client-read-state)
-   ;; read handler for this queue/socket
-   (reader :initform nil :accessor client-reader)
-   ;; space for handler to store connection specific data
-   (handler-data :initform nil :accessor client-handler-data)
-   ;; probably don't need to hold onto these for very long, but easier to
-   ;; store here trhan pass around while parsing handshake
-   (connection-headers :initform nil :accessor client-connection-headers)
-   )
-  :documentation "Per-client data used by a WebSockets server.")
+               :accessor client-read-queue
+               :documentation "queue of decoded lines/frames")
+   (read-state :initform :maybe-policy-file :accessor client-read-state
+               :documentation "Reader fsm state")
+   (reader :initform nil :accessor client-reader
+           :documentation "Read handler for this queue/socket")
+   (handler-data :initform nil :accessor client-handler-data
+                 :documentation "Space for handler to store connection
+                 specific data.")
+   ;; probably don't need to hold onto these for very long, but easier
+   ;; to store here trhan pass around while parsing handshake
+   (connection-headers :initform nil :accessor client-connection-headers))
+  (:documentation "Per-client data used by a WebSockets server."))
 
 ;; fixme: should the cilent remember which *event-base* it uses so
 ;; these can work from other threads too?
+;; YES, it should -- RED 07/14/2010
 (defmethod client-reader-active ((client client))
   (iolib.multiplex::fd-monitored-p *event-base* (socket-os-fd (client-socket client)) :read))
 (defmethod client-writer-active ((client client))
@@ -63,6 +73,7 @@
   (iolib.multiplex::fd-has-error-handler-p *event-base* (socket-os-fd (client-socket client))))
 
 (defun try-write-client (client)
+  "Attempts to "
   (let ((fd (socket-os-fd (client-socket client))))
     (when (and fd
                (not (client-socket-closed client))
@@ -77,40 +88,46 @@
                                          (try-write-client client)))
                 #++(setf (client-writer-active client) t))))
        (handler-case
+           ;; fixme: this is one ugly loop.  I vote for a single
+           ;; :do clause
            (loop
-              unless (client-write-buffer client)
-              do
-              (setf (client-write-buffer client) (client-dequeue-write client))
-              (setf (client-write-offset client) 0)
-              ;; if we got a :close command, clean up the socket
-              when (eql (client-write-buffer client) :close)
-              do
+             :unless (client-write-buffer client)
+             :do
+             (setf (client-write-buffer client) (client-dequeue-write client))
+             (setf (client-write-offset client) 0)
+             ;; if we got a :close command, clean up the socket
+             :when (eql (client-write-buffer client) :close)
+             :do
               (client-disconnect client :close t)
               (return-from try-write-client nil)
-              when (eql (client-write-buffer client) :enable-read)
-              do
+             :when (eql (client-write-buffer client) :enable-read)
+             :do
               (client-enable-handler client :read t)
               (setf (client-write-buffer client) nil)
-              else when (client-write-buffer client)
-              do
-              (let ((count (send-to (client-socket client)
-                                    (client-write-buffer client)
-                                    :start (client-write-offset client)
-                                    :end (length (client-write-buffer client)))))
-                (incf (client-write-offset client) count)
-                (when (>= (client-write-offset client)
-                          (length (client-write-buffer client)))
-                  (setf (client-write-buffer client) nil)))
-              ;; if we didn't write the entire buffer, make sure the writer is
-              ;; enabled, and exit the loop
-              when (client-write-buffer client)
-              do
-              (enable)
-              (loop-finish)
-              when (mailbox-empty-p (client-write-queue client))
-              do
-              (client-disable-handler client :write t)
-              (loop-finish))
+             :else :when (client-write-buffer client)
+             :do
+             (let ((count (send-to (client-socket client)
+                                   (client-write-buffer client)
+                                   :start (client-write-offset client)
+                                   :end (length (client-write-buffer client)))))
+               (incf (client-write-offset client) count)
+               (when (>= (client-write-offset client)
+                         (length (client-write-buffer client)))
+                 (setf (client-write-buffer client) nil)))
+             ;; if we didn't write the entire buffer, make sure the writer is
+             ;; enabled, and exit the loop
+
+             ;; > But shouldn't we ensure that the writer is enabled
+             ;; > regardless of whether iolib manages to write out the
+             ;; > entire buffer?
+             :when (client-write-buffer client)
+             :do
+             (enable)
+             (loop-finish)
+             :when (mailbox-empty-p (client-write-queue client))
+             :do
+             (client-disable-handler client :write t)
+             (loop-finish))
          (isys:ewouldblock ()
            (enable)
            nil)
