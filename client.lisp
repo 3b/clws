@@ -27,7 +27,7 @@
    ;; queue of buffers (octet vectors) to write, or :close to kill connection
    ;; :enable-read to reenable reader after being disabled for flow control
    ;; (mailbox instead of queue since it tracks length)
-   (write-queue :initform (sb-concurrency:make-mailbox)
+   (write-queue :initform (make-mailbox)
                 :reader client-write-queue)
    ;; list of partial buffers + offsets of CR/LF/etc to be decoded into
    ;; a line/frame once the end is found
@@ -38,7 +38,7 @@
    ;; fixme: probably should hide write access to counts behind functions that manipulate the buffer?
    (read-buffer-octets :initform 0 :accessor client-read-buffer-octets)
    ;; queue of decoded lines/frames
-   (read-queue :initform (sb-concurrency:make-mailbox)
+   (read-queue :initform (make-mailbox)
                ;; possibly should have separate writer?
                :accessor client-read-queue)
    ;; reader fsm state
@@ -107,7 +107,7 @@
               do
               (enable)
               (loop-finish)
-              when (sb-concurrency:mailbox-empty-p (client-write-queue client))
+              when (mailbox-empty-p (client-write-queue client))
               do
               (client-disable-handler client :write t)
               (loop-finish))
@@ -226,11 +226,11 @@ handshake coming in from the client."))
 ;;; fixme: decide if any of these should be methods? (or others should be functions?)
 
 (defun client-enqueue-write (client data)
-  (sb-concurrency:send-message (client-write-queue client) data)
+  (mailbox-send-message (client-write-queue client) data)
   (try-write-client client))
 
 (defun client-dequeue-write (client)
-  (sb-concurrency:receive-message-no-hang (client-write-queue client)))
+  (mailbox-receive-message-no-hang (client-write-queue client)))
 
 (defparameter %frame-start% (make-array 1 :element-type '(unsigned-byte 8)
                                         :initial-element #x00))
@@ -244,18 +244,18 @@ handshake coming in from the client."))
       ((symbolp frame)
        ;; don't count control messages against limit for now
        )
-      ((> (sb-concurrency:mailbox-count (client-write-queue client))
+      ((> (mailbox-count (client-write-queue client))
           *max-write-backlog*)
        (format t "client write backlog = ~s, killing conectiom~%"
-               (sb-concurrency:mailbox-count (client-write-queue client)))
+               (mailbox-count (client-write-queue client)))
        (funcall (%client-server-hook client)
                 (lambda ()
                   (client-disconnect client :abort t)
                   (client-enqueue-read client (list client :dropped))
-                  (sb-concurrency:receive-pending-messages
+                  (mailbox-receive-pending-messages
                    (client-write-queue client)))))
       (t
-       (sb-concurrency:send-message (client-write-queue client) frame)))))
+       (mailbox-send-message (client-write-queue client) frame)))))
 
 (defun make-frame-from-string (string)
   (concatenate '(vector (unsigned-byte 8))
@@ -305,10 +305,10 @@ handshake coming in from the client."))
                     #++ (client-enable-handler client :write t)))))))
 
 (defun client-enqueue-read (client data)
-  (sb-concurrency:send-message (client-read-queue client) data))
+  (mailbox-send-message (client-read-queue client) data))
 
 (defun client-dequeue-read (client)
-  (sb-concurrency:receive-message-no-hang (client-read-queue client)))
+  (mailbox-receive-message-no-hang (client-read-queue client)))
 
 (defun store-partial-read (client data offset)
   ;; fixme: should check for read-buffer-octets getting too big here?

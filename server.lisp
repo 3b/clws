@@ -37,7 +37,7 @@ closed.  Intended to run in a dedicated thread."
   (let ((*event-base* (make-instance 'event-base))
         (*clients* (make-hash-table))
         (temp (make-array 16 :element-type '(unsigned-byte 8)))
-        (control-mailbox (sb-concurrency:make-queue :name "server-control"))
+        (control-mailbox (make-queue :name "server-control"))
         (wake-up (make-array 1 :element-type '(unsigned-byte 8)
                              :initial-element 0)))
 
@@ -52,7 +52,7 @@ closed.  Intended to run in a dedicated thread."
                ;; hook for waking up the server and telling it to run
                ;; some code, for things like enabling writers when
                ;; there is new data to write
-               (sb-concurrency:enqueue thunk control-mailbox)
+               (enqueue thunk control-mailbox)
                (ignore-errors
                  (send-to control-socket-2 wake-up))))
         (unwind-protect
@@ -74,7 +74,7 @@ closed.  Intended to run in a dedicated thread."
                                        (receive-from control-socket-1
                                                      :buffer temp
                                                      :start 0 :end 16)
-                                       (loop for m = (sb-concurrency:dequeue control-mailbox)
+                                       (loop for m = (dequeue control-mailbox)
                                           while m
                                           do (funcall m))))
                (set-io-handler *event-base*

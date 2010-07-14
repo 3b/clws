@@ -12,6 +12,7 @@
   :serial t
   :components ((:file "package")
                (:file "sb-concurrency-patch")
+               (:file "port-concurrency")
                (:file "util")
                (:file "client")
                (:file "resource")

@@ -61,7 +61,7 @@ of the resource requested as a string.
 2.  The headers received as an EQUALP hash table."
 
   #++(format t "parsing handshake: ~s~%"
-          (sb-concurrency:list-mailbox-messages (client-read-queue client)))
+          (mailbox-list-messages (client-read-queue client)))
   (let* ((resource nil)
          (headers nil)
          (resource-line (client-dequeue-read client))
@@ -414,7 +414,7 @@ pass to next call"
              #++(lg "got frame, next=~s, ff=~s, len=~s~%  frame = ~s~%"
                  next ff (length b) f))
            (cond
-             ((> (sb-concurrency:mailbox-count (client-read-queue client))
+             ((> (mailbox-count (client-read-queue client))
                  *max-handler-read-backlog*)
               ;; if server isn't processing events fast enuogh, disable the
               ;; reader temporarily and tell the handler

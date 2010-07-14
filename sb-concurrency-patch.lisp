@@ -1,5 +1,7 @@
+#+sbcl
 (in-package :sb-concurrency)
 
+#+sbcl
 (defun dequeue (queue)
   "Retrieves the oldest value in QUEUE and returns it as the primary value,
 and T as secondary value. If the queue is empty, returns NIL as both primary
