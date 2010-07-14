@@ -1,13 +1,22 @@
 (in-package #:ws)
 
 (defparameter *event-base* nil)
-;; hash of client objects to them selves (just used as a set for now)
-(defparameter *clients* nil)
-;; max number of simultaneous clients allowed (nil for no limit)
-;; extra connections will get a HTTP 5xx response (without reading headers)
-(defparameter *max-clients* 256)
 
+
+(defparameter *clients* nil
+  "Hash of client objects to them selves (just used as a set for now).")
+
+(defparameter *max-clients* 256
+  "Max number of simultaneous clients allowed (nil for no limit).
+Extra connections will get a HTTP 5xx response (without reading headers).")
+
+;; FIXME -- UNUSED and appears buggy -- RED 14/07/2010
 (defun parse-handshake (lines)
+  "Parses a WebSocket handshake sent by a client and returns 2 values:
+the resource requested and a hash table of header-value pairs.
+
+LINES is a list of lines in the order they were receieved on the
+socket."
   (format t "parsing handshake: ~s~%" lines)
   (let* ((resource nil)
          (headers (make-hash-table :test 'equal))
@@ -61,11 +70,18 @@ Sec-WebSocket-Protocol: ~a
    :encoding :utf-8))
 
 (defun make-handshake (origin location protocol version)
+  "Returns a WebSockets handshake string returned by a server to a
+client."
   (ecase version
     (:draft-75 (make-handshake-75 origin location protocol))
     (:draft-76 (make-handshake-76 origin location protocol))))
 
 (defun make-domain-policy (&key (from "*") (to-port "*"))
+  "Generates a very basic cross-domain policy file, used for the
+WebSocket emulation via Flash.
+
+For more information on what that is, see
+http://www.adobe.com/devnet/articles/crossdomain_policy_file_spec.html"
   (babel:string-to-octets
    (format nil "<cross-domain-policy><allow-access-from domain=\"~a\" to-ports=\"~a\" /></cross-domain-policy>~c"
            from to-port

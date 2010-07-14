@@ -50,7 +50,8 @@
    ;; probably don't need to hold onto these for very long, but easier to
    ;; store here trhan pass around while parsing handshake
    (connection-headers :initform nil :accessor client-connection-headers)
-   ))
+   )
+  :documentation "Per-client data used by a WebSockets server.")
 
 ;; fixme: should the cilent remember which *event-base* it uses so
 ;; these can work from other threads too?

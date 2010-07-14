@@ -1,24 +1,30 @@
 (in-package #:ws)
 
-;; default buffer size for reading lines/frames
-(defparameter *max-read-frame-size* 8192)
-;; default max header size in octets (not used yet?)
-(defparameter *max-header-size* 16384)
+(defparameter *max-read-frame-size* 8192
+  "Default buffer size for reading lines/frames.")
 
-;; max number of reads before reader gives up on assembling a line/frame
-;; (temporary hack until fragments are stored more efficiently, to
-;;  avoid wasting a bunch of space if we only get 1 octet per read or
-;;  whatever)
-;; currently allocating 2kio/read, so stores multiples of that
-(defparameter *read-max-fragments* 8)
+(defparameter *max-header-size* 16384
+  "Default max header size in octets (not used yet?)")
 
-;; max number of frames that can be queued before the reader will start
-;; throttling reads for clients using that queue
-;; (for now, just drops the connections...)
+;; 
+(defparameter *read-max-fragments* 8
+  "Max number of reads before reader gives up on assembling a line/frame.
+
+\(Temporary hack until fragments are stored more efficiently, to avoid
+wasting a bunch of space if we only get 1 octet per read or
+whatever.\)
+
+Currently allocating 2kio/read, so stores multiples of that."
+
 ;; fixme: should this have a separate setting for when to reenable readers?
-(defparameter *max-handler-read-backlog* 256)
+(defparameter *max-handler-read-backlog* 256
+  "Max number of frames that can be queued before the reader will
+ start throttling reads for clients using that queue (for now, just
+ drops the connections...)."
 
-(defparameter *policy-file* (make-domain-policy))
+(defparameter *policy-file* (make-domain-policy)
+  "cross-domain policy file, used for the Flash WebSocket emulator.")
+
 (defparameter *404-message* (babel:string-to-octets
                              "HTTP/1.1 404 Resource not found
 
@@ -40,11 +46,20 @@
      do (client-enable-handler client :read t)))
 
 (defun valid-resource-p (resource)
-  ;; todo: see if there is a handler registered for the resource
+  "Returns non-nil if there is a handler registered for the resource
+of the given name (a string)."
+  (declare (type string resource))
   (when resource
     (gethash resource *resources*)))
 
 (defun handle-connection-header (client)
+  "Parses the client's handshake and returns two values:
+
+1.  Either :invalid-resource in the case of a bad request or the name
+of the resource requested as a string.
+
+2.  The headers received as an EQUALP hash table."
+
   #++(format t "parsing handshake: ~s~%"
           (sb-concurrency:list-mailbox-messages (client-read-queue client)))
   (let* ((resource nil)
@@ -125,10 +140,10 @@
     #++(format t "made challenge  (~{0x~2,'0x ~}) ~%" (coerce b 'list))
     b))
 (defparameter *reader-fsm*
-  ;; mapping of state to lambda
+  "Mapping of state to lambda.
 
-  ;; - lambda handles a buffer, and returns new state + extra state
-  ;;   info to pass to next call
+- lambda handles a buffer, and returns new state + extra state info to
+pass to next call"
   (alexandria:plist-hash-table
    (list
     ;; in order to support the .swf websocket emulation, we optionally

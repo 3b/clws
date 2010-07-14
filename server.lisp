@@ -32,6 +32,8 @@
            (add-reader-to-client client)))))))
 
 (defun run-server (port &key (addr +ipv4-unspecified+))
+  "Starts a server on the given PORT and blocks until the server is
+closed.  Intended to run in a dedicated thread."
   (let ((*event-base* (make-instance 'event-base))
         (*clients* (make-hash-table))
         (temp (make-array 16 :element-type '(unsigned-byte 8)))

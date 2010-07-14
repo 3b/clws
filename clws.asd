@@ -18,8 +18,9 @@
                (:file "read")
                (:file "server"))
   :description "CLWS implement the WebSockets protocol as described by
-the latest specification draft[1].  Both server and client WebSockets
-are implemented.
+the latest specification draft[1].  Only a WebSockets server
+implementation is provided.
 
-[1] http://tools.ietf.org/html/draft-hixie-thewebsocketprotocol-76")
+[1] http://www.whatwg.org/specs/web-socket-protocol/
+[2] http://tools.ietf.org/html/draft-hixie-thewebsocketprotocol-76 -- draft #76")
 
