@@ -4,7 +4,10 @@
   "Max number of queued write frames before dropping a client.")
 
 (defclass client ()
-  ((port :initarg :port :reader client-port)
+  ((server :initarg :server :reader client-server
+           :documentation "The instance of WS:SERVER that owns this
+           client.")
+   (port :initarg :port :reader client-port)
    (host :initarg :host :reader client-host)
    (server-hook :initarg :server-hook :reader %client-server-hook
                 :documentation "Function to call to send a command to
@@ -62,84 +65,24 @@
    (connection-headers :initform nil :accessor client-connection-headers))
   (:documentation "Per-client data used by a WebSockets server."))
 
-;; fixme: should the cilent remember which *event-base* it uses so
-;; these can work from other threads too?
-;; YES, it should -- RED 07/14/2010
 (defmethod client-reader-active ((client client))
-  (iolib.multiplex::fd-monitored-p *event-base* (socket-os-fd (client-socket client)) :read))
+  (iolib.multiplex::fd-monitored-p (server-event-base (client-server client))
+                                   (socket-os-fd (client-socket client)) :read))
+
 (defmethod client-writer-active ((client client))
-  (iolib.multiplex::fd-monitored-p *event-base* (socket-os-fd (client-socket client)) :write))
+  (iolib.multiplex::fd-monitored-p (server-event-base (client-server client))
+                                   (socket-os-fd (client-socket client)) :write))
+
 (defmethod client-error-active ((client client))
-  (iolib.multiplex::fd-has-error-handler-p *event-base* (socket-os-fd (client-socket client))))
+  (iolib.multiplex::fd-has-error-handler-p (server-event-base (client-server client))
+                                           (socket-os-fd (client-socket client))))
 
-(defun try-write-client (client)
-  "Attempts to "
-  (let ((fd (socket-os-fd (client-socket client))))
-    (when (and fd
-               (not (client-socket-closed client))
-               (not (client-write-closed client)))
-     (flet ((enable ()
-              (when (and (not (client-socket-closed client))
-                         (not (client-writer-active client))
-                         (not (client-write-closed client)))
-                (set-io-handler *event-base* fd
-                                :write (lambda (fd event exception)
-                                         (declare (ignore fd event exception))
-                                         (try-write-client client)))
-                #++(setf (client-writer-active client) t))))
-       (handler-case
-           ;; fixme: this is one ugly loop.  I vote for a single
-           ;; :do clause
-           (loop
-             :unless (client-write-buffer client)
-             :do
-             (setf (client-write-buffer client) (client-dequeue-write client))
-             (setf (client-write-offset client) 0)
-             ;; if we got a :close command, clean up the socket
-             :when (eql (client-write-buffer client) :close)
-             :do
-              (client-disconnect client :close t)
-              (return-from try-write-client nil)
-             :when (eql (client-write-buffer client) :enable-read)
-             :do
-              (client-enable-handler client :read t)
-              (setf (client-write-buffer client) nil)
-             :else :when (client-write-buffer client)
-             :do
-             (let ((count (send-to (client-socket client)
-                                   (client-write-buffer client)
-                                   :start (client-write-offset client)
-                                   :end (length (client-write-buffer client)))))
-               (incf (client-write-offset client) count)
-               (when (>= (client-write-offset client)
-                         (length (client-write-buffer client)))
-                 (setf (client-write-buffer client) nil)))
-             ;; if we didn't write the entire buffer, make sure the writer is
-             ;; enabled, and exit the loop
-
-             ;; > But shouldn't we ensure that the writer is enabled
-             ;; > regardless of whether iolib manages to write out the
-             ;; > entire buffer?
-             :when (client-write-buffer client)
-             :do
-             (enable)
-             (loop-finish)
-             :when (mailbox-empty-p (client-write-queue client))
-             :do
-             (client-disable-handler client :write t)
-             (loop-finish))
-         (isys:ewouldblock ()
-           (enable)
-           nil)
-         (isys:epipe ()
-           ;; client closed conection, so drop it...
-           (lg "epipe~%")
-           (client-enqueue-read client (list client :dropped))
-           (client-disconnect client :close t))
-         (socket-connection-reset-error ()
-           (lg "connection reset~%")
-           (client-enqueue-read client (list client :dropped))
-           (client-disconnect client :close t)))))))
+(defun special-client-write-value-p (value)
+  "Certain values, like :close and :enable-read, are special symbols
+that may be passed to WRITE-TO-CLIENT or otherwise enqueued on the
+client's write queue.  This predicate returns T if value is one of
+those special values"
+  (member value '(:close :enable-read)))
 
 (defgeneric client-enable-handler (client &key read write error)
   (:documentation "Enables the read, write, or error handler for a a
@@ -164,29 +107,39 @@ handshake coming in from the client."))
       (when (and read
                  (not (client-reader-active client))
                  (not (client-read-closed client)))
-        (set-io-handler *event-base* fd :read (client-reader client))
+        (set-io-handler (server-event-base (client-server client))
+                        fd
+                        :read (client-reader client))
         #++(setf (client-reader-active client) t))
 
       (when (and error (not (client-error-active client)))
         (error "error handlers not implemented yet...")))))
+
+(defgeneric client-disable-handler (client &key read write error)
+  (:documentation "Stop listening for READ, WRITE, or ERROR events on the socket for
+the given client object. "))
 
 (defmethod client-disable-handler ((client client) &key read write error)
   (lg "disable handlers for ~s:~s ~s ~s ~s~%"
       (client-host client) (client-port client) read write error)
   (let ((fd (socket-os-fd (client-socket client))))
     (when (and write (client-writer-active client))
-      (remove-fd-handlers *event-base* fd :write t)
-      #++(setf (client-writer-active client) nil))
-      (when read (format t "disable read ~s ~s ~s~%"
-                         fd
-                         (client-reader-active client)
-                         (client-read-closed client)))
+      (iolib:remove-fd-handlers (server-event-base (client-server client)) fd :write t))
+
+    (when read (lg "disable read ~s ~s ~s~%"
+                   fd
+                   (client-reader-active client)
+                   (client-read-closed client)))
+
     (when (and read (client-reader-active client))
-      (remove-fd-handlers *event-base* fd :read t)
-      #++(setf (client-reader-active client) nil))
+      (remove-fd-handlers (server-event-base (client-server client)) fd :read t))
+
     (when (and error (client-error-active client))
       (error "error handlers not implemented yet..."))))
 
+(defgeneric client-disconnect (client &key read write close abort) 
+  (:documentation "Shutdown 1 or both sides of a connection, close it
+if both sides shutdown"))
 
 (defmethod client-disconnect ((client client) &key read write close abort)
   "shutdown 1 or both sides of a connection, close it if both sides shutdown"
@@ -227,27 +180,181 @@ handshake coming in from the client."))
           (when (or (client-reader-active client)
                     (client-writer-active client)
                     (client-error-active client))
-            (ignore-some-errors (remove-fd-handlers *event-base* fd :read t :write t :error t)))
+            (ignore-some-errors (remove-fd-handlers (server-event-base (client-server client))
+                                                    fd :read t :write t :error t)))
           (ignore-some-errors (close socket :abort abort))))))
   (when (or close abort
             (and (client-read-closed client)
                  (client-write-closed client)))
-    (format t "removing client ~s~%" (client-port client))
+    (lg "removing client ~s~%" (client-port client))
     ;(setf *foo* client )
     (setf (client-socket-closed client) t)
-    (remhash client *clients*)))
+    (remhash client (server-clients (client-server client)))))
 
 
 
 
 ;;; fixme: decide if any of these should be methods? (or others should be functions?)
 
+;; What are differences are for the many different
+;; write functions available?  There are a bunch of write functions:
+;;
+;; - write-to-client -- user-level function for writing some data
+;;      string to a client
+;;
+;; - %client-enqueue-write-or-kill -- sits in between
+;;      client-enqueue-write and write-to-client to prevent too many
+;;      user messages from piling up.  It also handles the special
+;;      :close argument to close a client gracefully by including a
+;;      *close-frame* handshake
+;;
+;; - client-enqueue-write -- slightly more primitive than
+;;      write-to-client because it does not inspect the passed data or
+;;      write-queue very much at all, so this is used internally a lot
+;;
+;; - try-write-client -- should only be called on the server thread,
+;;      attempts to flush some of the data in the write-queue in a
+;;      non-blocking fashion.
+;;
+
+
 (defun client-enqueue-write (client data)
+  "Adds data to the client's write-queue and asynchronously send it to
+the client."
   (mailbox-send-message (client-write-queue client) data)
   (try-write-client client))
 
 (defun client-dequeue-write (client)
+  "Non-blocking call to dequeue a piece of data in the write-queue to
+be sent to the client."
   (mailbox-receive-message-no-hang (client-write-queue client)))
+
+(defun make-frame-from-string (string)
+  "Given a string, returns bytes that can be transmitted to the client
+as a WebSockets frame."
+  (concatenate '(vector (unsigned-byte 8))
+               '(0)
+               (babel:string-to-octets string :encoding :utf-8)
+               '(#xff)))
+
+(defparameter *close-frame* (make-array 2 :element-type '(unsigned-byte 8)
+                                        :initial-contents '(#xff #x00)))
+
+(defun write-to-client (client string-or-keyword)
+  "Writes the given message to the client, where STRING-OR-KEYWORD is
+either a string or one of :CLOSE.  If it is a string, it is sent to
+the client as a framed message.  :close closes the connection.string"
+  (declare (type (or string (satisfies special-client-write-value-p))
+                 string-or-keyword))
+  (unless (client-write-closed client)
+    (let ((hook (%client-server-hook client)))
+      (cond
+        ((stringp string-or-keyword)
+         ;; this is ugly, figure out how to write in 1 chunk without encoding
+         ;; to a temp buffer and copying...
+         (%client-enqueue-write-or-kill (make-frame-from-string string-or-keyword)
+                                        client))
+        ((eq string-or-keyword :close)
+         ;; draft-76/00 adds a close handshake, so enqueue that as
+         ;; well when closing socket
+         (%client-enqueue-write-or-kill *close-frame* client)
+         (%client-enqueue-write-or-kill :close client))
+        (t
+         (%client-enqueue-write-or-kill string-or-keyword client)))
+      (funcall hook
+               (lambda ()
+                 (client-enable-handler client :write t))))))
+
+(defun write-to-clients (clients string)
+  "Like WRITE-TO-CLIENT but sends the message to all of the clients."
+  (declare (type (or string (satisfies special-client-write-value-p))
+                 string))
+  (when clients
+    (loop :with msg = (if (stringp string)
+                        (make-frame-from-string string)
+                        string)
+          :for client in clients
+          :do (unless (client-write-closed client)
+                (%client-enqueue-write-or-kill msg client)))
+
+    ;; fixme: handle clients with different server hooks...
+    (let ((hook (%client-server-hook (car clients))))
+      (funcall hook
+               (lambda ()
+                 (loop :for client :in clients
+                       :do (try-write-client client)))))))
+
+(defun try-write-client (client)
+  "Should only be called on the server thread,
+attempts to flush some of the data in the write-queue in a
+non-blocking fashion."
+  (let ((fd (socket-os-fd (client-socket client))))
+    (when (and fd
+               (not (client-socket-closed client))
+               (not (client-write-closed client)))
+     (flet ((enable ()
+              (when (and (not (client-socket-closed client))
+                         (not (client-writer-active client))
+                         (not (client-write-closed client)))
+                (set-io-handler (server-event-base (client-server client)) fd
+                                :write (lambda (fd event exception)
+                                         (declare (ignore fd event exception))
+                                         (try-write-client client)))
+                #++(setf (client-writer-active client) t))))
+       (handler-case
+           (loop
+             :do
+             (progn
+               ;; set up the active client-write-buffer
+               (unless (client-write-buffer client)
+                 (setf (client-write-buffer client) (client-dequeue-write client))
+                 (setf (client-write-offset client) 0))
+
+               ;; if we got a :close command, clean up the socket
+               (when (eql (client-write-buffer client) :close)
+                 (client-disconnect client :close t)
+                 (return-from try-write-client nil))
+
+               (when (eql (client-write-buffer client) :enable-read)
+                 (client-enable-handler client :read t)
+                 (setf (client-write-buffer client) nil))
+
+               (when (client-write-buffer client)
+                 (let ((count (send-to (client-socket client)
+                                       (client-write-buffer client)
+                                       :start (client-write-offset client)
+                                       :end (length (client-write-buffer client)))))
+                   (incf (client-write-offset client) count)
+                   (when (>= (client-write-offset client)
+                             (length (client-write-buffer client)))
+                     (setf (client-write-buffer client) nil))))
+
+               ;; if we didn't write the entire buffer, make sure the writer is
+               ;; enabled, and exit the loop
+               
+               ;; > But shouldn't we ensure that the writer is enabled
+               ;; > regardless of whether iolib manages to write out the
+               ;; > entire buffer? -- RED
+               (when (client-write-buffer client)
+                 (enable)
+                 (loop-finish))
+               
+               (when (mailbox-empty-p (client-write-queue client))
+                 (client-disable-handler client :write t)
+                 (loop-finish))))
+
+         (isys:ewouldblock ()
+           (enable)
+           nil)
+         (isys:epipe ()
+           ;; client closed conection, so drop it...
+           (lg "epipe~%")
+           (client-enqueue-read client (list client :dropped))
+           (client-disconnect client :close t))
+         (socket-connection-reset-error ()
+           (lg "connection reset~%")
+           (client-enqueue-read client (list client :dropped))
+           (client-disconnect client :close t)))))))
 
 (defparameter %frame-start% (make-array 1 :element-type '(unsigned-byte 8)
                                         :initial-element #x00))
@@ -274,57 +381,13 @@ handshake coming in from the client."))
       (t
        (mailbox-send-message (client-write-queue client) frame)))))
 
-(defun make-frame-from-string (string)
-  (concatenate '(vector (unsigned-byte 8))
-               '(0)
-               (babel:string-to-octets string :encoding :utf-8)
-               '(#xff)))
-
-(defparameter *close-frame* (make-array 2 :element-type '(unsigned-byte 8)
-                                        :initial-contents '(#xff #x00)))
-
-(defun write-to-client (client string)
-  (unless (client-write-closed client)
-    (let ((hook (%client-server-hook client)))
-      (cond
-        ((stringp string)
-         ;; this is ugly, figure out how to write in 1 chunk without encoding
-         ;; to a temp buffer and copying...
-         (%client-enqueue-write-or-kill (make-frame-from-string string)
-                                        client))
-        ((eq string :close)
-         ;; draft-76/00 adds a close handshake, so enqueue that as
-         ;; well when closing socket
-         (%client-enqueue-write-or-kill *close-frame* client)
-         (%client-enqueue-write-or-kill string client))
-        (t
-         ;; fixme: verify this is something valid (like :close) before adding
-         (%client-enqueue-write-or-kill string client)))
-      (funcall hook
-               (lambda ()
-                 (client-enable-handler client :write t))))))
-
-(defun write-to-clients (clients string)
-  (when clients
-    (loop with msg = (if (stringp string)
-                        (make-frame-from-string string)
-                        string)
-      for client in clients
-      do (unless (client-write-closed client)
-           ;; fixme: verify this is something valid (like :close) before adding
-           (%client-enqueue-write-or-kill msg client)))
-  ;; fixme: handle clients with different server hooks...
-    (let ((hook (%client-server-hook (car clients))))
-      (funcall hook
-               (lambda ()
-                 (loop for client in clients
-                    do (try-write-client client)
-                    #++ (client-enable-handler client :write t)))))))
-
 (defun client-enqueue-read (client data)
+  "Adds a piece of data to the client's read-queue so that it may be
+read and processed."
   (mailbox-send-message (client-read-queue client) data))
 
 (defun client-dequeue-read (client)
+  "Non-blocking call to dequeue a piece of data from a client' read-queue."
   (mailbox-receive-message-no-hang (client-read-queue client)))
 
 (defun store-partial-read (client data offset)

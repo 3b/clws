@@ -1,11 +1,5 @@
 (in-package #:ws)
 
-(defparameter *event-base* nil)
-
-
-(defparameter *clients* nil
-  "Hash of client objects to them selves (just used as a set for now).")
-
 (defparameter *max-clients* 256
   "Max number of simultaneous clients allowed (nil for no limit).
 Extra connections will get a HTTP 5xx response (without reading headers).")
@@ -89,5 +83,5 @@ http://www.adobe.com/devnet/articles/crossdomain_policy_file_spec.html"
    :encoding :ascii))
 
 (defun lg (&rest args)
-  #++(apply #'format t args)
-  #++(finish-output))
+  (apply #'format t args)
+  (finish-output))

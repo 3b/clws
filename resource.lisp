@@ -18,6 +18,13 @@
   "hash mapping resource name to (list of handler instance, origin
  validation function, ?)")
 
+(defun valid-resource-p (resource)
+  "Returns non-nil if there is a handler registered for the resource
+of the given name (a string)."
+  (declare (type string resource))
+  (when resource
+    (gethash resource *resources*)))
+
 ;; functions for checking origins...
 (defun any-origin (o) (declare (ignore o)) t)
 

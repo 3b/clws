@@ -45,13 +45,6 @@ Currently allocating 2kio/read, so stores multiples of that.")
      when (eq c client)
      do (client-enable-handler client :read t)))
 
-(defun valid-resource-p (resource)
-  "Returns non-nil if there is a handler registered for the resource
-of the given name (a string)."
-  (declare (type string resource))
-  (when resource
-    (gethash resource *resources*)))
-
 (defun handle-connection-header (client)
   "Parses the client's handshake and returns two values:
 
@@ -131,7 +124,7 @@ of the resource requested as a string.
 ;; (extract-key "3e6b263  4 17 80") -> 906585445
 ;; (extract-key "17  9 G`ZD9   2 2b 7X 3 /r90") -> 179922739
 
-(Defun make-challenge (k1 k2)
+(defun make-challenge (k1 k2)
   (let ((b (make-array 16 :element-type '(unsigned-byte 8))))
     (loop for i from 0 below 4
        for j from 24 downto 0 by 8
