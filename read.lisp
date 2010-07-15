@@ -81,7 +81,7 @@ of the resource requested as a string.
         (return-from handle-connection-header
           (values :invalid-resource nil)))
       ;; if we don't recognize the resource, return 404
-      (unless (valid-resource-p resource)
+      (unless (valid-resource-p (client-server client) resource)
         (lg "unknown resource ~s~%" resource)
         (return-from handle-connection-header
           (values :404 nil)))

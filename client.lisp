@@ -253,6 +253,8 @@ either a string or one of :CLOSE.  If it is a string, it is sent to
 the client as a framed message.  :close closes the connection.string"
   (declare (type (or string (satisfies special-client-write-value-p))
                  string-or-keyword))
+  ;; fixme: ensure this function is truly thread-safe, particularly
+  ;; against connections closing at arbitrary points in time
   (unless (client-write-closed client)
     (let ((hook (%client-server-hook client)))
       (cond

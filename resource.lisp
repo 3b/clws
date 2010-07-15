@@ -18,6 +18,23 @@
   "hash mapping resource name to (list of handler instance, origin
  validation function, ?)")
 
+(defun register-global-resource (name resource-handler origin-validation-fn)
+  "Registers a resource instance where NAME is a path string like
+'/swank', resource-handler is an instance of WS-RESOURCE, and
+ORIGIN-VALIDATION-FN is a function that takes an origin string as
+input and returns T if that origin is allowed to access this
+resource."
+  (setf (gethash name *resources*)
+        (list resource-handler origin-validation-fn)))
+
+(defun find-global-resource (name)
+  "Returns the resource registerd via REGISTER-GLOBAL-RESOURCE with name NAME."
+  (first (gethash name *resources*)))
+
+(defun unregister-global-resource (name)
+  "Removes the resource registerd via REGISTER-GLOBAL-RESOURCE with name NAME."
+  (remhash name *resources*))
+
 (defun valid-resource-p (server resource)
   "Returns non-nil if there is a handler registered for the resource
 of the given name (a string)."
@@ -94,7 +111,15 @@ the other values."))
 RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
   (loop :for (client data) = (mailbox-receive-message (slot-value resource 'read-queue))
         :do
-        (case data
-          (:eof (write-to-client client :close))
-          (t    (resource-received-frame resource client data)))
+        (cond
+          ((eql data :eof) (write-to-client client :close))
+          ((eql data :dropped) (write-to-client client :close))
+          ((eql data :close-resource))
+          ((symbolp data) (error "Unknown syhmbol in read-queue of resource: ~S " data))
+          (t              (resource-received-frame resource client data)))
         :until (eql data :close-resource)))
+
+(defun kill-resource-listener (resource)
+  "Terminates a RUN-RESOURCE-LISTENER from another thread."
+  (mailbox-send-message (resource-read-queue resource)
+                        '(nil :close-resource)))
