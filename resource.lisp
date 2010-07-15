@@ -18,10 +18,11 @@
   "hash mapping resource name to (list of handler instance, origin
  validation function, ?)")
 
-(defun valid-resource-p (resource)
+(defun valid-resource-p (server resource)
   "Returns non-nil if there is a handler registered for the resource
 of the given name (a string)."
-  (declare (type string resource))
+  (declare (type string resource)
+           (ignore server))
   (when resource
     (gethash resource *resources*)))
 
@@ -29,27 +30,71 @@ of the given name (a string)."
 (defun any-origin (o) (declare (ignore o)) t)
 
 (defun origin-prefix (&rest prefixes)
+  "Returns a function that checks whether a given path matches any of
+the prefixes passed as arguments."
   (lambda (o)
-    (loop for p in prefixes
-       for m = (mismatch o p)
-       when (or (not m) (= m (length p)))
-       return t)))
+    (loop :for p :in prefixes
+          :for m = (mismatch o p)
+          :when (or (not m) (= m (length p)))
+          :return t)))
 
 (defun origin-exact (&rest origins)
+  "Returns a function that checks whether a given path matches any of
+the origins passed as arguments exactly."
   ;; fixme: probably should use something better than a linear search
   (lambda (o)
     (member o origins :test #'string=)))
 
-
-
-(defvar *ws-test-queue* (make-mailbox :name "ws-test-queue"))
+(defgeneric resource-read-queue (resource)
+  (:documentation "The concurrent mailbox used to pass messages
+  between the server thread and resource thread."))
 
 (defclass ws-resource ()
-  ((read-queue)))
+  ((read-queue :initform (make-mailbox) :reader resource-read-queue))
+  (:documentation "A server may have many resources, each associated
+  with a particular resource path (like /echo or /chat).  An single
+  instance of a resource handles all requests on the server for that
+  particular url, with the thelp of RUN-RESOURCE-LISTENER,
+  RESOURCE-RECEIVED-FRAME, and RESOURCE-CLIENT-DISCONNECTED."))
 
-(defgeneric ws-accept-connection (res resource-name headers client))
-(defmethod ws-accept-connection (res resource-name headers client)
-  (format t "got connection request on ws-resource? ~s / ~s~%" res resource-name)
-  nil
-)
+(defgeneric resource-accept-connection (res resource-name headers client)
+  (:documentation "Decides whether to accept a connection and returns
+values to process the connection further.
 
+Passed values
+    - RES is the instance of ws-resource
+    - RESOURCE-NAME is the resource name requested by the client (string)
+    - HEADERS is the hash table of headers from the client
+    - client is the instance of client
+
+Returns values
+    1. NIL if the connection should be rejected, or non-nil otherwise
+    2. Concurrent mailbox in which to place messages received from the 
+       client, or NIL for default
+    3. origin origin from which to claim this resource is responding, 
+       or NIL  for default.
+    4. handshake-resource or NIL for default
+    5. protocol or NIL for default
+
+Most of the time this function will just return a mailbox and nil for
+the other values."))
+
+(defgeneric resource-client-disconnected (resource client)
+  (:documentation "Called when a client disconnected from a WebSockets resource."))
+
+(defgeneric resource-received-frame (resource client message)
+  (:documentation "Called when a client sent a frame to a WebSockets resource."))
+
+(defmethod resource-accept-connection (res resource-name headers client)
+  (lg "Got connection request on ws-resource ~s / ~s: REJECTING~%" res resource-name)
+  nil)
+
+(defun run-resource-listener (resource)
+  "Runs a resource listener in its own thread indefinitely, calling
+RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
+  (loop :for (client data) = (mailbox-receive-message (slot-value resource 'read-queue))
+        :do
+        (case data
+          (:eof (write-to-client client :close))
+          (t    (resource-received-frame resource client data)))
+        :until (eql data :close-resource)))

@@ -4,7 +4,7 @@
   "Max number of simultaneous clients allowed (nil for no limit).
 Extra connections will get a HTTP 5xx response (without reading headers).")
 
-;; FIXME -- UNUSED and appears buggy -- RED 14/07/2010
+;; fixme -- UNUSED and appears buggy -- RED 14/07/2010
 (defun parse-handshake (lines)
   "Parses a WebSocket handshake sent by a client and returns 2 values:
 the resource requested and a hash table of header-value pairs.

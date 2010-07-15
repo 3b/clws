@@ -55,7 +55,17 @@ connections and has a bunch of client instances that it controls."))
 
 (defun run-server (port &key (addr +ipv4-unspecified+))
   "Starts a server on the given PORT and blocks until the server is
-closed.  Intended to run in a dedicated thread."
+closed.  Intended to run in a dedicated thread (the current one),
+dubbed the Server Thread.
+
+Establishes a socket listener in the current thread.  This thread
+handles all incoming connections, and because of this fact is able to
+handle far more concurrent connections than it would be able to if it
+spawned off a new thread for each connection.  As such, most of the
+processing is done on the Server Thread, though most user functions
+are thread-safe.
+
+"
   (let* ((event-base (make-instance 'iolib:event-base))
          (server (make-instance 'server
                                 :event-base event-base))

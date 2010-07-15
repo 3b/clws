@@ -7,6 +7,9 @@
   ((server :initarg :server :reader client-server
            :documentation "The instance of WS:SERVER that owns this
            client.")
+   (resource :initarg :resource :initform nil :accessor client-resource
+             :documentation "The resource object the client has
+             requested-- Not the string, but the object.")
    (port :initarg :port :reader client-port)
    (host :initarg :host :reader client-host)
    (server-hook :initarg :server-hook :reader %client-server-hook
@@ -182,12 +185,16 @@ if both sides shutdown"))
                     (client-error-active client))
             (ignore-some-errors (remove-fd-handlers (server-event-base (client-server client))
                                                     fd :read t :write t :error t)))
-          (ignore-some-errors (close socket :abort abort))))))
+          (ignore-some-errors (close socket :abort abort))
+
+          (let ((resource (client-resource client)))
+            (when resource
+              (resource-client-disconnected resource client)))))))
   (when (or close abort
             (and (client-read-closed client)
                  (client-write-closed client)))
     (lg "removing client ~s~%" (client-port client))
-    ;(setf *foo* client )
+    ;;(setf *foo* client )
     (setf (client-socket-closed client) t)
     (remhash client (server-clients (client-server client)))))
 

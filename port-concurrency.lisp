@@ -31,6 +31,11 @@ and secondary value."
   #+sbcl
   (sb-concurrency:make-mailbox :name name :initial-contents initial-contents))
 
+(defun mailboxp (mailbox)
+  "Returns true if MAILBOX is currently empty, NIL otherwise."
+  #+sbcl
+  (sb-concurrency:mailboxp mailbox))
+
 (defun mailbox-empty-p (mailbox)
   "Returns true if MAILBOX is currently empty, NIL otherwise."
   #+sbcl

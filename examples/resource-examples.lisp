@@ -11,7 +11,7 @@
             (origin-prefix "http://127.0.0.1" "http://localhost")))
 
 
-(defmethod ws-accept-connection ((res ws-echo-server) resource-name headers client)
+(defmethod resource-accept-connection ((res ws-echo-server) resource-name headers client)
   (format t "got connection on echo server from ~s : ~s~%" (client-host client) (client-port client))
   (values (slot-value res 'read-queue)
           ;; use defaults for origin/resource/protocol for now..
@@ -55,7 +55,7 @@
       (list (make-instance 'ws-chat-server)
             (origin-prefix "http://127.0.0.1" "http://localhost")))
 
-(defmethod ws-accept-connection ((res ws-chat-server) resource-name headers client)
+(defmethod resource-accept-connection ((res ws-chat-server) resource-name headers client)
   (format t "add client ~s (~s)~%" client (client-port client))
   ;; wrong thread, can't do this here...
   ;;(push client (clients res))

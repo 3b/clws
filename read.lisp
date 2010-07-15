@@ -337,42 +337,49 @@ and for policy-file as well."
   ;; send handshake and start reading frames
   (let ((headers (client-connection-headers client))
         (next (getf state :start))
-        (resource (getf state :resource))
+        (resource-string (getf state :resource))
         (version (getf state :version))
         (challenge-response (getf state :challenge-response)))
     (destructuring-bind (resource-handler check-origin)
-        (valid-resource-p resource)
+        (valid-resource-p (client-server client) resource-string)
       (cond
+        ;; fixme: check-origin should probably be a function of the server
         ((not (funcall check-origin (gethash "Origin" headers)))
          (lg "got bad origin ~s~%" (gethash "Origin" headers))
          ;; unknown origin, just drop the connection
          ;; possibly should return an error code instead?
          (values :abort nil))
         (t
-         (multiple-value-bind (rqueue origin handshake-resource protocol)
-             (ws-accept-connection resource-handler resource
+         (multiple-value-bind (acceptp rqueue origin handshake-resource protocol)
+             (resource-accept-connection resource-handler resource-string
                                    headers
                                    client)
-           (setf (client-read-queue client) rqueue)
-           (client-enqueue-write client
-                                 (make-handshake
-                                  (or origin
-                                      (gethash "Origin" headers)
-                                      "http://127.0.0.1/")
-                                  (let ((*print-pretty*))
-                                    (format nil "~a~a~a"
-                                            "ws://"
-                                            (or (gethash "Host" headers)
-                                                "127.0.0.1:12345")
-                                            (or handshake-resource
-                                                resource)))
-                                  (or protocol
-                                      (gethash "WebSocket-Protocol" headers)
-                                      "test")
-                                  version))
-           (when challenge-response
-             (client-enqueue-write client challenge-response)))
-         (values :frame-00 (if next (list :start next))))))))
+           (cond
+             ((not acceptp)
+              (values :abort nil))
+             (t
+              (setf (client-read-queue client) (or rqueue
+                                                   (resource-read-queue resource-handler)
+                                                   (make-mailbox)))
+              (client-enqueue-write client
+                                    (make-handshake
+                                     (or origin
+                                         (gethash "Origin" headers)
+                                         "http://127.0.0.1/")
+                                     (let ((*print-pretty*))
+                                       (format nil "~a~a~a"
+                                               "ws://"
+                                               (or (gethash "Host" headers)
+                                                   "127.0.0.1:12345")
+                                               (or handshake-resource
+                                                   resource-string)))
+                                     (or protocol
+                                         (gethash "WebSocket-Protocol" headers)
+                                         "test")
+                                     version))
+              (when challenge-response
+                (client-enqueue-write client challenge-response))
+              (values :frame-00 (if next (list :start next)))))))))))
 
 
 (define-reader-state :frame-00 (b client state)
