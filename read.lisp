@@ -360,7 +360,8 @@ and for policy-file as well."
              (t
               (setf (client-read-queue client) (or rqueue
                                                    (resource-read-queue resource-handler)
-                                                   (make-mailbox)))
+                                                   (make-mailbox))
+                    (client-resource client) resource-handler)
               (client-enqueue-write client
                                     (make-handshake
                                      (or origin
@@ -467,6 +468,7 @@ and for policy-file as well."
 (defun add-reader-to-client (client)
   "Supplies the client with a reader function responsible for
 processing input coming in from the client."
+  (declare (optimize (debug 3)))
   (setf (client-reader client)
         (lambda (fd event exception)
           (declare (ignore fd event exception))
@@ -522,7 +524,11 @@ processing input coming in from the client."
                 (client-disconnect client :read t
                                    :write (not (member
                                                 (client-read-state client)
-                                                '(:frame-00 :frame-ff)))))
+                                                ;; fixme: there is a bug in here somewhere.  when we
+                                                ;; are in state :frame-00 or :frame-ff we never close
+                                                ;; the socket sometimes.
+                                                nil #+nil '(:frame-00 :frame-ff)
+                                                ))))
               (socket-connection-reset-error ()
                 (client-enqueue-read client (list client :eof))
                 (format t "connection reset by peer ~s / ~s~%" (client-host client)

@@ -146,6 +146,7 @@ if both sides shutdown"))
 
 (defmethod client-disconnect ((client client) &key read write close abort)
   "shutdown 1 or both sides of a connection, close it if both sides shutdown"
+  (declare (optimize (debug 3)))
   (lg "disconnect for ~s:~s ~s ~s / ~s ~s~%"
       (client-host client) (client-port client) read write close abort)
   (unless (client-socket-closed client)
@@ -185,17 +186,17 @@ if both sides shutdown"))
                     (client-error-active client))
             (ignore-some-errors (remove-fd-handlers (server-event-base (client-server client))
                                                     fd :read t :write t :error t)))
-          (ignore-some-errors (close socket :abort abort))
+          (ignore-some-errors (close socket :abort abort))))))
 
-          (let ((resource (client-resource client)))
-            (when resource
-              (resource-client-disconnected resource client)))))))
   (when (or close abort
             (and (client-read-closed client)
                  (client-write-closed client)))
-    (lg "removing client ~s~%" (client-port client))
+    (lg "removing client ~s (closed already? ~A)~%" (client-port client) (client-socket-closed client))
     ;;(setf *foo* client )
     (setf (client-socket-closed client) t)
+    (let ((resource (client-resource client)))
+      (when resource
+        (resource-client-disconnected resource client)))
     (remhash client (server-clients (client-server client)))))
 
 
