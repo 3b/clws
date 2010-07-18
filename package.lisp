@@ -15,6 +15,10 @@
    #:resource-client-disconnected
    #:run-resource-listener
    #:kill-resource-listener
+
+   #:send-custom-message-to-resource
+   #:send-custom-message-to-resource
+   #:call-on-resource-thread
    ;; server
    #:run-server))
    

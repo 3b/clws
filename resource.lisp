@@ -102,9 +102,39 @@ the other values."))
 (defgeneric resource-received-frame (resource client message)
   (:documentation "Called when a client sent a frame to a WebSockets resource."))
 
+(defgeneric resource-received-custom-message (resource message)
+  (:documentation "Called on the resource listener thread when a
+  client is passed an arbitrary message via
+  SEND-CUSTOM-MESSAGE-TO-RESOURCE. "))
+
+(defgeneric send-custom-message-to-resource (resource message)
+  (:documentation "Thread-safe way to pass a message to the resource
+  listener.  Any message passed with this function will result in
+  RESOURCE-RECEIVED-CUSTOM-MESSAGE being called on the resource thread
+  with the second argument of this function."))
+
 (defmethod resource-accept-connection (res resource-name headers client)
   (lg "Got connection request on ws-resource ~s / ~s: REJECTING~%" res resource-name)
   nil)
+
+(defmethod send-custom-message-to-resource (resource message)
+  (mailbox-send-message (resource-read-queue resource)
+                        (list message  :custom)))
+
+(defclass funcall-custom-message ()
+  ((function :initarg :function :initform nil :reader message-function))
+  (:documentation "A type of so-called 'custom message' used to call a
+  function on the main resource thread."))
+
+(defmethod resource-received-custom-message (resource (message funcall-custom-message))
+  (funcall (message-function message)))
+
+(defgeneric call-on-resource-thread (resource fn)
+  (:documentation "Funcalls FN on the resource thread of RESOURCE."))
+
+(defmethod call-on-resource-thread (resource fn)
+  (send-custom-message-to-resource
+   resource (make-instance 'funcall-custom-message :function fn)))
 
 (defun run-resource-listener (resource)
   "Runs a resource listener in its own thread indefinitely, calling
@@ -115,8 +145,13 @@ RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
           ((eql data :eof) (write-to-client client :close))
           ((eql data :dropped) (write-to-client client :close))
           ((eql data :close-resource))
-          ((symbolp data) (error "Unknown syhmbol in read-queue of resource: ~S " data))
+          ((eql data :custom) ;; here we use the client place to store the custom message
+           (let ((message client))
+             (resource-received-custom-message resource message)))
+          ((symbolp data) (error "Unknown symbol in read-queue of resource: ~S " data))
           (t              (resource-received-frame resource client data)))
+        ;; fixme should probably call some generic function with all
+        ;; the remaining messages
         :until (eql data :close-resource)))
 
 (defun kill-resource-listener (resource)
