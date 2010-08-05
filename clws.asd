@@ -6,13 +6,15 @@
 (in-package :clws-system)
 
 (defsystem :clws
-  :depends-on ("sb-concurrency"
+  :depends-on (#+sbcl "sb-concurrency"
+               #-sbcl "chanl"
                "iolib"
                "ironclad")
   :serial t
   :components ((:file "package")
-               (:file "sb-concurrency-patch")
-               (:file "port-concurrency")
+               #+sbcl(:file "sb-concurrency-patch")
+               #+sbcl(:file "concurrency-sbcl")
+               #-sbcl(:file "concurrency-chanl")
                (:file "util")
                (:file "client")
                (:file "resource")

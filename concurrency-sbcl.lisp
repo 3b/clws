@@ -1,10 +1,8 @@
 (in-package #:clws)
 
-;; fixme do we really need queues AND mailboxes?
-;; What's the difference anyway?
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Queues
+;;;;   Thread safe queue
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defun make-queue (&key name initial-contents)
   "Returns a new QUEUE with NAME and contents of the INITIAL-CONTENTS
@@ -25,6 +23,7 @@ and secondary value."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Mailboxes
+;;;;  Thread safe queue with ability to do blocking reads
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defun make-mailbox (&key name initial-contents)
   "Returns a new MAILBOX with messages in INITIAL-CONTENTS enqueued."  
