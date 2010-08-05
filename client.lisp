@@ -140,7 +140,7 @@ the given client object. "))
     (when (and error (client-error-active client))
       (error "error handlers not implemented yet..."))))
 
-(defgeneric client-disconnect (client &key read write close abort) 
+(defgeneric client-disconnect (client &key read write close abort)
   (:documentation "Shutdown 1 or both sides of a connection, close it
 if both sides shutdown"))
 
@@ -250,26 +250,26 @@ as a WebSockets frame."
 
 (defun write-to-client (client string-or-keyword)
   "Writes the given message to the client, where STRING-OR-KEYWORD is
-either a string or one of :CLOSE.  If it is a string, it is sent to
-the client as a framed message.  :close closes the connection.string"
-  (declare (type (or string (satisfies special-client-write-value-p))
-                 string-or-keyword))
+either a string, an octet-vector, or :CLOSE.  If it is a string, it is
+sent to the client as a framed message.  An octet vector is assumed to
+be a valid frame and sent without further translation. :close closes
+the connection."
   ;; fixme: ensure this function is truly thread-safe, particularly
   ;; against connections closing at arbitrary points in time
   (unless (client-write-closed client)
     (let ((hook (%client-server-hook client)))
-      (cond
-        ((stringp string-or-keyword)
+      (etypecase string-or-keyword
+        (string
          ;; this is ugly, figure out how to write in 1 chunk without encoding
          ;; to a temp buffer and copying...
          (%client-enqueue-write-or-kill (make-frame-from-string string-or-keyword)
                                         client))
-        ((eq string-or-keyword :close)
+        ((eql :close)
          ;; draft-76/00 adds a close handshake, so enqueue that as
          ;; well when closing socket
          (%client-enqueue-write-or-kill *close-frame* client)
          (%client-enqueue-write-or-kill :close client))
-        (t
+        ((vector (unsigned-byte 8))
          (%client-enqueue-write-or-kill string-or-keyword client)))
       (funcall hook
                (lambda ()
@@ -277,8 +277,7 @@ the client as a framed message.  :close closes the connection.string"
 
 (defun write-to-clients (clients string)
   "Like WRITE-TO-CLIENT but sends the message to all of the clients."
-  (declare (type (or string (satisfies special-client-write-value-p))
-                 string))
+  ;; fixme: validate type of STRING?
   (when clients
     (loop :with msg = (if (stringp string)
                         (make-frame-from-string string)
@@ -341,14 +340,14 @@ non-blocking fashion."
 
                ;; if we didn't write the entire buffer, make sure the writer is
                ;; enabled, and exit the loop
-               
+
                ;; > But shouldn't we ensure that the writer is enabled
                ;; > regardless of whether iolib manages to write out the
                ;; > entire buffer? -- RED
                (when (client-write-buffer client)
                  (enable)
                  (loop-finish))
-               
+
                (when (mailbox-empty-p (client-write-queue client))
                  (client-disable-handler client :write t)
                  (loop-finish))))

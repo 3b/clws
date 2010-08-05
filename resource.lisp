@@ -93,8 +93,8 @@ Returns values
     4. handshake-resource or NIL for default
     5. protocol or NIL for default
 
-Most of the time this function will just return a mailbox and nil for
-the other values."))
+Most of the time this function will just return true for the first
+value to accept the connection, and nil for the other values."))
 
 (defgeneric resource-client-disconnected (resource client)
   (:documentation "Called when a client disconnected from a WebSockets resource."))

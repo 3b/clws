@@ -3,121 +3,83 @@
 ;;;; Echo server
 ;;;; -----------
 
-(defclass ws-echo-server (ws-resource)
-  ((read-queue :allocation :class :initform *ws-test-queue*)))
+(defclass echo-resource (ws-resource)
+  ())
 
-(setf (gethash "/echo" *resources*)
-      (list (make-instance 'ws-echo-server)
-            (origin-prefix "http://127.0.0.1" "http://localhost")))
+(register-global-resource
+ "/echo"
+ (make-instance 'echo-resource)
+ (ws::origin-prefix "http://127.0.0.1" "http://localhost"))
 
-
-(defmethod resource-accept-connection ((res ws-echo-server) resource-name headers client)
+(defmethod resource-accept-connection ((res echo-resource) resource-name headers client)
+  (declare (ignore headers resource-name))
   (format t "got connection on echo server from ~s : ~s~%" (client-host client) (client-port client))
-  (values (slot-value res 'read-queue)
-          ;; use defaults for origin/resource/protocol for now..
-          nil nil nil))
+  t)
+
+(defmethod resource-client-disconnected ((resource echo-resource) client)
+  (format t "Client disconnected from resource ~A: ~A~%" resource client))
+
+(defmethod resource-received-frame ((res echo-resource) client message)
+  (format t "got frame ~s from client ~s" message client)
+  (when (stringp message)
+    (write-to-client client message)))
 
 
-
-
-; (sb-concurrency:receive-message-no-hang *ws-test-queue*)
 #++
-(loop for (client data) = (sb-concurrency:receive-message-no-hang *ws-test-queue*)
-   while client
-   do (format t "handler got frame: ~s~%" data)
-     (write-to-client client (format nil "echo: |~s|" data)))
+(bordeaux-threads:make-thread
+          (lambda ()
+            (ws:run-server 12345))
+          :name "websockets server")
 
-
-(defparameter *echo-kill* nil)
 #++
-(loop for (client data) = (sb-concurrency:receive-message *ws-test-queue*)
-   until (or *echo-kill* (eq data :kill))
-   when client
-   do #++(format t "handler got frame: ~s~%" data)
-     (write-to-client client (format nil "echo: |~s|" data))
-     (when (eq data :eof)
-       (write-to-client client :close)))
+(bordeaux-threads:make-thread
+ (lambda ()
+   (ws:run-resource-listener (ws:find-global-resource "/echo")))
+ :name "resource listener")
 
-(defun kill-echo ()
-  (setf *echo-kill* t)
-  (sb-concurrency:send-message *ws-test-queue* (list nil :kill)))
-#++
-(kill-echo)
+
 
 ;;;; Chat server
 ;;;; -----------
 
-(defclass ws-chat-server (ws-resource)
-  ((read-queue :allocation :class :initform *ws-test-queue*)
-   (clients :initform () :accessor clients)))
+(defclass chat-server (ws-resource)
+  ((clients :initform () :accessor clients)))
 
-(setf (gethash "/chat" *resources*)
-      (list (make-instance 'ws-chat-server)
-            (origin-prefix "http://127.0.0.1" "http://localhost")))
 
-(defmethod resource-accept-connection ((res ws-chat-server) resource-name headers client)
-  (format t "add client ~s (~s)~%" client (client-port client))
-  ;; wrong thread, can't do this here...
-  ;;(push client (clients res))
-  ;; fixme: probably should do this from caller...
-  (sb-concurrency:send-message (slot-value res 'read-queue) (list client :add))
-  (values (slot-value res 'read-queue) nil nil nil))
+(register-global-resource
+ "/chat"
+ (make-instance 'chat-server)
+ #'ws::any-origin
+ #++
+ (ws::origin-prefix "http://127.0.0.1" "http://localhost"))
 
-(defun handle-frame (server client data)
-  ;(sleep 0.1)
-  #++(format t "got frame ~s~%" data)
+(defmethod resource-accept-connection ((res chat-server) resource-name headers client)
+  (declare (ignore headers resource-name))
+  (format t "got connection on chat server from ~s : ~s~%" (client-host client) (client-port client))
+  ;; this gets called from wrong thread?
+  (push client (clients res))
+  t)
+
+(defmethod resource-client-disconnected ((resource chat-server) client)
+  (format t "Client disconnected from resource ~A: ~A~%" resource client)
+  (setf (clients resource) (remove client (clients resource))))
+
+(defmethod resource-received-frame ((res chat-server) client message)
+  ;(format t "got frame ~s from chat client ~s" message client)
   (let ((*print-pretty* nil))
-    #++(write-to-client client (format nil "chat: ~s.~s : |~s|"
-                                    (client-host client)
-                                    (client-port client)
-                                    data)
-)
-    #++(loop with msg = (format nil "chat: ~s.~s : |~s|"
-                                    (client-host client)
-                                    (client-port client)
-                                    data)
-       with msgz = (concatenate '(vector (unsigned-byte 8))
-                                '(0)
-                                (babel:string-to-octets msg :encoding :utf-8)
-                                '(#xff))
-       for c in (clients server)
-       ;;unless (eq client c)
-          do (write-to-client c msgz))
-    (write-to-clients (clients server)
+    (write-to-clients (clients res)
                       (concatenate '(vector (unsigned-byte 8))
                                    '(0)
                                    (babel:string-to-octets
                                     (format nil "chat: ~s.~s : |~s|"
                                             (client-host client)
                                             (client-port client)
-                                            data)
+                                            message)
                                     :encoding :utf-8)
-                                   '(#xff))))
-  (when (or (eq data :eof)
-            (eq data :dropped))
-    (format t "removed client ~s (~s)~%" client (client-port client))
-    (setf (clients server) (delete client (clients server)))
-    (write-to-client client :close)))
-#++
-(let ((server (car (gethash "/chat" *resources*))))
-  (sb-concurrency:receive-pending-messages *ws-test-queue*)
-  (setf (clients server) nil)
-  (loop
-    for (client data) = (sb-concurrency:receive-message *ws-test-queue*)
-     until (eq data :kill)
-     when (eq data :add)
-     do (push client (clients server))
-       (format t "add client ~s~%" client)
-     else when (eq data :flow-control)
-     do (write-to-client client :enable-read)
-     else when client
-     do (handle-frame server client data)
-     ;; don't hold onto client while waiting for more data
-     do (setf client nil)))
+                                   '(#xff)))))
 
 #++
-(kill-echo)
-
-
-#++
-(sb-concurrency:receive-pending-messages *ws-test-queue*)
+(bordeaux-threads:make-thread
+ (lambda ()
+   (ws:run-resource-listener (ws:find-global-resource "/chat")))
+ :name "chat resource listener")
