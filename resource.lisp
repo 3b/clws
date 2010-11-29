@@ -147,7 +147,9 @@ RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
           ((eql data :close-resource))
           ((eql data :custom) ;; here we use the client place to store the custom message
            (let ((message client))
-             (resource-received-custom-message resource message)))
+             (restart-case
+                 (resource-received-custom-message resource message)
+               (continue () :report "Continue"  ))))
           ((symbolp data) (error "Unknown symbol in read-queue of resource: ~S " data))
           (t              (resource-received-frame resource client data)))
         ;; fixme should probably call some generic function with all
