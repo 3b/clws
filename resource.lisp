@@ -136,15 +136,25 @@ value to accept the connection, and nil for the other values."))
   (send-custom-message-to-resource
    resource (make-instance 'funcall-custom-message :function fn)))
 
+(defun disconnect-client (client)
+  (when (client-resource client)
+    (resource-client-disconnected (client-resource client) client)
+    (setf (client-resource client) nil)))
+
 (defun run-resource-listener (resource)
   "Runs a resource listener in its own thread indefinitely, calling
 RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
   (loop :for (client data) = (mailbox-receive-message (slot-value resource 'read-queue))
         :do
         (cond
-          ((eql data :eof) (write-to-client client :close))
-          ((eql data :dropped) (write-to-client client :close))
-          ((eql data :close-resource))
+          ((eql data :eof)
+           (disconnect-client client)
+           (write-to-client client :close))
+          ((eql data :dropped)
+           (disconnect-client client)
+           (write-to-client client :close))
+          ((eql data :close-resource)
+           (disconnect-client client))
           ((eql data :custom) ;; here we use the client place to store the custom message
            (let ((message client))
              (restart-case

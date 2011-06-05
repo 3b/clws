@@ -188,16 +188,30 @@ if both sides shutdown"))
                                                     fd :read t :write t :error t)))
           (ignore-some-errors (close socket :abort abort))))))
 
-  (when (or close abort
-            (and (client-read-closed client)
-                 (client-write-closed client)))
+  (let ((resource (client-resource client)))
+    (when (and resource
+               (or close abort (client-read-closed client)))
+      (lg "disconnect client from resource ~s:~s~%"
+          (client-host client) (client-port client))
+      ;; should this clear client-resource too?
+      (resource-client-disconnected resource client)
+      (setf (client-resource client) nil)
+      (unless (client-write-closed client)
+        (write-to-client client :close))))
+
+  ;; not sure if this actually needs to be separate from previous
+  ;; check, need to figure out whether there can actually still be
+  ;; useful data waiting to be sent that will be received by the peer...
+  (when (and (or close abort
+                 (and (client-read-closed client)
+                      (client-write-closed client)))
+             (not (client-socket-closed client)))
     (lg "removing client ~s (closed already? ~A)~%" (client-port client) (client-socket-closed client))
     ;;(setf *foo* client )
     (setf (client-socket-closed client) t)
-    (let ((resource (client-resource client)))
-      (when resource
-        (resource-client-disconnected resource client)))
-    (remhash client (server-clients (client-server client)))))
+    (remhash client (server-clients (client-server client))))
+  (lg "<<finish disconnect for ~s:~s ~s ~s / ~s ~s~%"
+      (client-host client) (client-port client) read write close abort))
 
 
 
@@ -376,10 +390,10 @@ non-blocking fashion."
     (cond
       ((symbolp frame)
        ;; don't count control messages against limit for now
-       )
+       (mailbox-send-message (client-write-queue client) frame))
       ((> (mailbox-count (client-write-queue client))
           *max-write-backlog*)
-       (format t "client write backlog = ~s, killing conectiom~%"
+       (lg "client write backlog = ~s, killing conectiom~%"
                (mailbox-count (client-write-queue client)))
        (funcall (%client-server-hook client)
                 (lambda ()
