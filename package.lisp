@@ -20,7 +20,9 @@
    #:send-custom-message-to-resource
    #:call-on-resource-thread
    ;; server
-   #:run-server))
+   #:run-server
+   #:client-port
+   #:client-host))
    
 (in-package :clws)
 
