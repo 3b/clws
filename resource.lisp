@@ -94,10 +94,17 @@ Returns values
     5. protocol or NIL for default
 
 Most of the time this function will just return true for the first
-value to accept the connection, and nil for the other values."))
+value to accept the connection, and nil for the other values.
+
+Note that the connection is not fully established yet, so this
+function should not try to send anything to the client, see
+resource-client-connected for that."))
 
 (defgeneric resource-client-disconnected (resource client)
   (:documentation "Called when a client disconnected from a WebSockets resource."))
+
+(defgeneric resource-client-connected (resource client)
+  (:documentation "Called when a client finishes connecting to a WebSockets resource, and data can be sent to the client."))
 
 (defgeneric resource-received-frame (resource client message)
   (:documentation "Called when a client sent a frame to a WebSockets resource."))
@@ -115,6 +122,9 @@ value to accept the connection, and nil for the other values."))
 
 (defmethod resource-accept-connection (res resource-name headers client)
   (lg "Got connection request on ws-resource ~s / ~s: REJECTING~%" res resource-name)
+  nil)
+
+(defmethod resource-client-connected (res client)
   nil)
 
 (defmethod send-custom-message-to-resource (resource message)

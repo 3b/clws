@@ -380,6 +380,7 @@ and for policy-file as well."
                                      version))
               (when challenge-response
                 (client-enqueue-write client challenge-response))
+              (resource-client-connected resource-handler client)
               (values :frame-00 (if next (list :start next)))))))))))
 
 

@@ -22,7 +22,8 @@
    ;; server
    #:run-server
    #:client-port
-   #:client-host))
+   #:client-host
+   #:resource-client-connected))
    
 (in-package :clws)
 
