@@ -13,7 +13,7 @@ LINES is a list of lines in the order they were receieved on the
 socket."
   (format t "parsing handshake: ~s~%" lines)
   (let* ((resource nil)
-         (headers (make-hash-table :test 'equal))
+         (headers (make-hash-table :test 'eq))
          (resource-line (pop lines))
          (s1 (position #\space resource-line))
          ;; fixme: send a proper error if no space found
@@ -25,7 +25,7 @@ socket."
     (assert (string= "Connection: Upgrade" (pop lines)))
     (loop for l in lines
        for c = (position #\: l)
-       do (setf (gethash (subseq l 0 c) headers)
+       do (setf (gethash (subseq l 0 c) (chunga:as-keyword headers))
                 (subseq l (+ (if (and (< c (1- (length l)))
                                       (char= #\space (aref l (1+ c))))
                                  2 1)

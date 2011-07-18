@@ -87,7 +87,7 @@ of the resource requested as a string.
           (values :404 nil)))
       ;; otherwise try to parse remaining headers
       ;; (headers field names are case insensitive so use equalp)
-      (setf headers (make-hash-table :test 'equalp))
+      (setf headers (make-hash-table :test 'eq))
       (loop for l = (client-dequeue-read client)
          while l
          for c = (position #\: l)
@@ -100,7 +100,7 @@ of the resource requested as a string.
              (return-from handle-connection-header
                (values :invalid-header nil)))
          ;; otherwise store the header into the hash
-           (setf (gethash (subseq l 0 c) headers)
+           (setf (gethash (subseq l 0 c) (chunga:as-keyword headers))
                  (subseq l (+ (if (and (< c (1- (length l)))
                                        (char= #\space (aref l (1+ c))))
                                   2 1)
@@ -124,7 +124,7 @@ of the resource requested as a string.
 ;; (extract-key "3e6b263  4 17 80") -> 906585445
 ;; (extract-key "17  9 G`ZD9   2 2b 7X 3 /r90") -> 179922739
 
-(defun make-challenge (k1 k2)
+(defun make-challenge-old (k1 k2)
   (let ((b (make-array 16 :element-type '(unsigned-byte 8))))
     (loop for i from 0 below 4
        for j from 24 downto 0 by 8
@@ -132,6 +132,22 @@ of the resource requested as a string.
        do (setf (aref b (+ 4 i)) (ldb (byte 8 j) k2)))
     #++(format t "made challenge  (~{0x~2,'0x ~}) ~%" (coerce b 'list))
     b))
+
+(defun make-challenge-o7 (k &aux (o7-guid "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+  "Compute the WebSocket opening handshake challenge, according to:
+
+   http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-07#section-1.3
+
+Test this with the example provided in the above document:
+
+   (string= (clws::make-challenge-o7 \"dGhlIHNhbXBsZSBub25jZQ==\")
+            \"s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\")
+
+..which must return T."
+  (cl-base64:usb8-array-to-base64-string
+   (ironclad:digest-sequence
+    :sha1 (map '(vector (unsigned-byte 8)) #'char-code
+               (concatenate 'string k o7-guid)))))
 
 (defparameter *reader-fsm* (make-hash-table)
   "Mapping of state to lambda.
@@ -273,21 +289,21 @@ and for policy-file as well."
               (values :abort nil))
            (t
               (cond
-                ((and (string= (gethash "Connection" headers "") "Upgrade")
-                      (string= (gethash "Upgrade" headers "") "WebSocket")
-                      (setf k1 (extract-key (gethash "Sec-WebSocket-Key1"
+                ((and (string= (gethash :connection headers "") "Upgrade")
+                      (string= (gethash :upgrade headers "") "WebSocket")
+                      (setf k1 (extract-key (gethash :sec-websocket-key1
                                                      headers nil)))
-                      (setf k2 (extract-key (gethash "Sec-WebSocket-Key2"
+                      (setf k2 (extract-key (gethash :sec-websocket-key2
                                                      headers nil))))
                  (values :draft-76-key3
                          `(,@(if next (list :start next))
                              :resource ,resource
                              :count 0
-                             :octets ,(make-challenge k1 k2)
+                             :octets ,(make-challenge-old k1 k2)
                              )))
                 ((and *allow-draft-75* ;; fixme: don't duplicate these
-                      (string= (gethash "Connection" headers "") "Upgrade")
-                      (string= (gethash "Upgrade" headers "") "WebSocket"))
+                      (string= (gethash :connection headers "") "Upgrade")
+                      (string= (gethash :upgrade headers "") "WebSocket"))
                  (values :handshake-done `(,@(if next (list :start next))
                                              :resource ,resource
                                              :version :draft-75)))
@@ -344,16 +360,16 @@ and for policy-file as well."
         (valid-resource-p (client-server client) resource-string)
       (cond
         ;; fixme: check-origin should probably be a function of the server
-        ((not (funcall check-origin (gethash "Origin" headers)))
-         (lg "got bad origin ~s~%" (gethash "Origin" headers))
+        ((not (funcall check-origin (gethash :origin headers)))
+         (lg "got bad origin ~s~%" (gethash :origin headers))
          ;; unknown origin, just drop the connection
          ;; possibly should return an error code instead?
          (values :abort nil))
         (t
          (multiple-value-bind (acceptp rqueue origin handshake-resource protocol)
              (resource-accept-connection resource-handler resource-string
-                                   headers
-                                   client)
+                                         headers
+                                         client)
            (cond
              ((not acceptp)
               (values :abort nil))
@@ -365,17 +381,17 @@ and for policy-file as well."
               (client-enqueue-write client
                                     (make-handshake
                                      (or origin
-                                         (gethash "Origin" headers)
+                                         (gethash :origin headers)
                                          "http://127.0.0.1/")
                                      (let ((*print-pretty*))
                                        (format nil "~a~a~a"
                                                "ws://"
-                                               (or (gethash "Host" headers)
+                                               (or (gethash :host headers)
                                                    "127.0.0.1:12345")
                                                (or handshake-resource
                                                    resource-string)))
                                      (or protocol
-                                         (gethash "WebSocket-Protocol" headers)
+                                         (gethash :websocket-protocol headers)
                                          "test")
                                      version))
               (when challenge-response

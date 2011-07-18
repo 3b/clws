@@ -9,7 +9,9 @@
   :depends-on (#+sbcl "sb-concurrency"
                #-sbcl "chanl"
                "iolib"
-               "ironclad")
+               "ironclad"
+               "chunga"     ; for o7 hanshake
+               "cl-base64") ; for o7 hanshake
   :serial t
   :components ((:file "package")
                #+sbcl(:file "sb-concurrency-patch")
