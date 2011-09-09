@@ -1,7 +1,7 @@
 (in-package #:ws)
 
 (defparameter *server-busy-message* (babel:string-to-octets
-                             "HTTP/1. 503 service unavailable
+                             "HTTP/1.1 503 service unavailable
 
 "
                              :encoding :utf-8))
