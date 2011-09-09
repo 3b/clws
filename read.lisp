@@ -51,7 +51,7 @@ Currently allocating 2kio/read, so stores multiples of that.")
 1.  Either :invalid-resource in the case of a bad request or the name
 of the resource requested as a string.
 
-2.  The headers received as an EQUALP hash table."
+2.  The headers received as an EQ hash table."
 
   #++(format t "parsing handshake: ~s~%"
           (mailbox-list-messages (client-read-queue client)))
@@ -100,7 +100,7 @@ of the resource requested as a string.
              (return-from handle-connection-header
                (values :invalid-header nil)))
          ;; otherwise store the header into the hash
-           (setf (gethash (subseq l 0 c) (chunga:as-keyword headers))
+           (setf (gethash (chunga:as-keyword (subseq l 0 c)) headers)
                  (subseq l (+ (if (and (< c (1- (length l)))
                                        (char= #\space (aref l (1+ c))))
                                   2 1)
