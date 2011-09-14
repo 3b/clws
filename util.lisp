@@ -1,9 +1,5 @@
 (in-package #:ws)
 
-(defparameter *max-clients* 256
-  "Max number of simultaneous clients allowed (nil for no limit).
-Extra connections will get a HTTP 5xx response (without reading headers).")
-
 (defun make-domain-policy (&key (from "*") (to-port "*"))
   "Generates a very basic cross-domain policy file, used for the
 WebSocket emulation via Flash.

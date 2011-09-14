@@ -4,6 +4,23 @@
 ;; (also 8 (used by chrome 14/15, ff7) and 13, since they are pretty
 ;;  much identical)
 
+(defun make-challenge-o7 (k &aux (o7-guid "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+  "Compute the WebSocket opening handshake challenge, according to:
+
+   http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-07#section-1.3
+
+Test this with the example provided in the above document:
+
+   (string= (clws::make-challenge-o7 \"dGhlIHNhbXBsZSBub25jZQ==\")
+            \"s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\")
+
+..which must return T."
+  (cl-base64:usb8-array-to-base64-string
+   (ironclad:digest-sequence
+    :sha1 (map '(vector (unsigned-byte 8)) #'char-code
+               (concatenate 'string k o7-guid)))))
+
+
 (defun protocol-7+-handshake (client version-string origin-key)
   ;; required headers: Host, Sec-WebSocket-Key, Sec-WebSocket-Version
   ;; optional: Sec-Websocket-Origin, Sec-Websocket-Protocol, Sec-Websocket-Extensions

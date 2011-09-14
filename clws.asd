@@ -19,6 +19,7 @@
                #+sbcl(:file "sb-concurrency-patch")
                #+sbcl(:file "concurrency-sbcl")
                #-sbcl(:file "concurrency-chanl")
+               (:file "config")
                (:file "util")
                (:file "buffer")
                (:file "protocol-common")
@@ -27,7 +28,6 @@
                (:file "protocol")
                (:file "client")
                (:file "resource")
-               (:file "read")
                (:file "server"))
   :description "CLWS implement the WebSockets protocol as described by
 the latest specification draft[1] (as well as some older drafts
