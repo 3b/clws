@@ -19,10 +19,14 @@
 (defmethod resource-client-disconnected ((resource echo-resource) client)
   (format t "Client disconnected from resource ~A: ~A~%" resource client))
 
-(defmethod resource-received-frame ((res echo-resource) client message)
-  (format t "got frame ~s from client ~s" message client)
-  (when (stringp message)
-    (write-to-client client message)))
+(defmethod resource-received-text ((res echo-resource) client message)
+  #++(format t "got frame ~s from client ~s" message client)
+  (write-to-client-text client message))
+
+(defmethod resource-received-binary((res echo-resource) client message)
+  #++(format t "got binary frame ~s from client ~s" (length message) client)
+ #++ (write-to-client-text client (format nil "got binary ~s" message))
+  (write-to-client-binary client message))
 
 
 #++
@@ -35,8 +39,27 @@
 (bordeaux-threads:make-thread
  (lambda ()
    (ws:run-resource-listener (ws:find-global-resource "/echo")))
- :name "resource listener")
+ :name "resource listener for /echo")
 
+#++
+(kill-resource-listener (ws:find-global-resource "/echo"))
+
+
+;;; for autobahn test suite
+#++
+(register-global-resource
+ "/"
+ (make-instance 'echo-resource)
+ #'ws::any-origin)
+
+#++
+(bordeaux-threads:make-thread
+ (lambda ()
+   (ws:run-resource-listener (ws:find-global-resource "/")))
+ :name "resource listener for /")
+
+#++
+(kill-resource-listener (ws:find-global-resource "/"))
 
 
 ;;;; Chat server
@@ -64,7 +87,7 @@
   (format t "Client disconnected from resource ~A: ~A~%" resource client)
   (setf (clients resource) (remove client (clients resource))))
 
-(defmethod resource-received-frame ((res chat-server) client message)
+(defmethod resource-received-text ((res chat-server) client message)
   ;(format t "got frame ~s from chat client ~s" message client)
   (let ((*print-pretty* nil))
     (write-to-clients (clients res)
@@ -82,4 +105,4 @@
 (bordeaux-threads:make-thread
  (lambda ()
    (ws:run-resource-listener (ws:find-global-resource "/chat")))
- :name "chat resource listener")
+ :name "chat resource listener for /chat")

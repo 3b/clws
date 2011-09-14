@@ -76,7 +76,9 @@ the origins passed as arguments exactly."
 
 (defgeneric resource-accept-connection (res resource-name headers client)
   (:documentation "Decides whether to accept a connection and returns
-values to process the connection further.
+values to process the connection further. Defaults to accepting all
+connections and using the default mailbox and origin, so most resources
+shouldn't need to define a method.
 
 Passed values
     - RES is the instance of ws-resource
@@ -98,16 +100,35 @@ value to accept the connection, and nil for the other values.
 
 Note that the connection is not fully established yet, so this
 function should not try to send anything to the client, see
-resource-client-connected for that."))
+resource-client-connected for that.
+
+This function may be called from a different thread than most resource
+functions, so methods should be careful about accessing shared data, and
+should avoid blocking for extended periods.
+"))
 
 (defgeneric resource-client-disconnected (resource client)
   (:documentation "Called when a client disconnected from a WebSockets resource."))
 
 (defgeneric resource-client-connected (resource client)
-  (:documentation "Called when a client finishes connecting to a WebSockets resource, and data can be sent to the client."))
+  (:documentation "Called when a client finishes connecting to a
+WebSockets resource, and data can be sent to the client.
 
+Methods can return :reject to immediately close the connection and
+ignore any already received data from this client."))
+
+#++
 (defgeneric resource-received-frame (resource client message)
+  ;;; not used for the moment, since newer ws spec combine 'frame's into
+  ;;; 'message's, which might be binary or text...
+  ;;; may add this back later as an interface to processing per frame
+  ;;; instead of per message?
   (:documentation "Called when a client sent a frame to a WebSockets resource."))
+(defgeneric resource-received-text (resource client message)
+  (:documentation "Called when a client sent a text message to a WebSockets resource."))
+
+(defgeneric resource-received-binary (resource client message)
+  (:documentation "Called when a client sent a binary message to a WebSockets resource."))
 
 (defgeneric resource-received-custom-message (resource message)
   (:documentation "Called on the resource listener thread when a
@@ -121,8 +142,7 @@ resource-client-connected for that."))
   with the second argument of this function."))
 
 (defmethod resource-accept-connection (res resource-name headers client)
-  (lg "Got connection request on ws-resource ~s / ~s: REJECTING~%" res resource-name)
-  nil)
+  t)
 
 (defmethod resource-client-connected (res client)
   nil)
@@ -155,26 +175,42 @@ resource-client-connected for that."))
   "Runs a resource listener in its own thread indefinitely, calling
 RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
   (loop :for (client data) = (mailbox-receive-message (slot-value resource 'read-queue))
+        ;; fixme should probably call some generic function with all
+        ;; the remaining messages
+        :while (not (eql data :close-resource))
         :do
+        #++(format t "~%got message --~s--~%" data)
         (cond
+          ((and client (client-connection-rejected client))
+           ;; ignore any further queued data from this client
+           )
+          ((eql data :connect)
+           (when (eq :reject (resource-client-connected resource client))
+             (setf (client-connection-rejected client) t)
+             (write-to-client-close client)))
           ((eql data :eof)
            (disconnect-client client)
-           (write-to-client client :close))
+           (write-to-client-close client))
           ((eql data :dropped)
            (disconnect-client client)
-           (write-to-client client :close))
+           (write-to-client-close client))
           ((eql data :close-resource)
            (disconnect-client client))
-          ((eql data :custom) ;; here we use the client place to store the custom message
+          ((eql data :custom)
+           ;; here we use the client place to store the custom message
            (let ((message client))
              (restart-case
                  (resource-received-custom-message resource message)
                (continue () :report "Continue"  ))))
-          ((symbolp data) (error "Unknown symbol in read-queue of resource: ~S " data))
-          (t              (resource-received-frame resource client data)))
-        ;; fixme should probably call some generic function with all
-        ;; the remaining messages
-        :until (eql data :close-resource)))
+          ((symbolp data)
+           (error "Unknown symbol in read-queue of resource: ~S " data))
+          ((consp data)
+           (if (eq (car data) :text)
+               (resource-received-text resource client (cadr data))
+               (resource-received-binary resource client (cadr data))))
+          (t
+           (error "got unknown data in run-resource-listener?")
+           #++ (resource-received-frame resource client data)))))
 
 (defun kill-resource-listener (resource)
   "Terminates a RUN-RESOURCE-LISTENER from another thread."

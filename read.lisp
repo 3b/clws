@@ -3,6 +3,9 @@
 (defparameter *max-read-frame-size* 8192
   "Default buffer size for reading lines/frames.")
 
+(defparameter *max-read-message-size* (* 32 (expt 2 20))
+  "Default buffer size for reading lines/frames.")
+
 (defparameter *max-header-size* 16384
   "Default max header size in octets (not used yet?)")
 
@@ -25,6 +28,17 @@ Currently allocating 2kio/read, so stores multiples of that.")
 (defparameter *policy-file* (make-domain-policy)
   "cross-domain policy file, used for the Flash WebSocket emulator.")
 
+(defparameter *400-message* (babel:string-to-octets
+                             "HTTP/1.1 400 Bad Request
+
+"
+                             :encoding :utf-8))
+
+(defparameter *403-message* (babel:string-to-octets
+                             "HTTP/1.1 403 Forbidden
+
+"
+                             :encoding :utf-8))
 (defparameter *404-message* (babel:string-to-octets
                              "HTTP/1.1 404 Resource not found
 
@@ -105,6 +119,7 @@ of the resource requested as a string.
                                        (char= #\space (aref l (1+ c))))
                                   2 1)
                               c)))))
+    (lg "got headers : ~s~%" (alexandria:hash-table-alist headers))
     (values (or resource :invalid-handshake) headers)))
 
 (defun extract-key (k)
@@ -482,6 +497,7 @@ and for policy-file as well."
   (error "reader kept reading on socket that should have been aborted?"))
 
 
+#++
 (defun add-reader-to-client (client)
   "Supplies the client with a reader function responsible for
 processing input coming in from the client."
@@ -554,3 +570,6 @@ processing input coming in from the client."
               ;; ... add error handlers
               ))))
   (client-enable-handler client :read t))
+
+
+

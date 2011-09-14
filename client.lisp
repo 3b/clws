@@ -3,7 +3,7 @@
 (defparameter *max-write-backlog* 16
   "Max number of queued write frames before dropping a client.")
 
-(defclass client ()
+(defclass client (buffered-reader)
   ((server :initarg :server :reader client-server
            :documentation "The instance of WS:SERVER that owns this
            client.")
@@ -40,6 +40,7 @@
                 reenable reader after being disabled for flow
                 control (mailbox instead of queue since it tracks
                 length).")
+   #++
    (read-buffers :initform nil :accessor client-read-buffers
                  :documentation "List of partial buffers + offsets of
                  CR/LF/etc to be decoded into a line/frame once the
@@ -48,6 +49,7 @@
                  chunk")
    ;; fixme: probably should hide write access to counts behind
    ;; functions that manipulate the buffer?
+   #++
    (read-buffer-octets :initform 0 :accessor client-read-buffer-octets
                        :documentation "Total octets in
                        read-buffers (so we can reject overly large
@@ -56,16 +58,37 @@
                ;; possibly should have separate writer?
                :accessor client-read-queue
                :documentation "queue of decoded lines/frames")
-   (read-state :initform :maybe-policy-file :accessor client-read-state
-               :documentation "Reader fsm state")
+   (connection-state :initform :connecting :accessor client-connection-state
+               :documentation "State of connection:
+:connecting when initially created
+:headers while reading headers,
+:connected after server handshake sent
+:failed after an error has occurred and further input/output will be ignored
+:closing when close has been sent but not received from peer (input is still
+ valid, but no more output will be sent)")
    (reader :initform nil :accessor client-reader
            :documentation "Read handler for this queue/socket")
    (handler-data :initform nil :accessor client-handler-data
                  :documentation "Space for handler to store connection
                  specific data.")
    ;; probably don't need to hold onto these for very long, but easier
-   ;; to store here trhan pass around while parsing handshake
-   (connection-headers :initform nil :accessor client-connection-headers))
+   ;; to store here than pass around while parsing handshake
+   (connection-headers :initform nil :accessor client-connection-headers)
+   ;; 'resource name' and 'query' parts of request URI
+   ;; (ws://host</resource-name>?<query>host
+   (resource-name :initform nil :accessor client-resource-name)
+   (query-string :initform nil :accessor client-query-string)
+   (websocket-version :initform nil :accessor client-websocket-version)
+   ;; internal slots used for message/frame assembly
+   (partial-message :initform nil :accessor partial-message)
+   (message-opcode :initform nil :accessor message-opcode)
+   (frame-opcode-octet :initform nil :accessor frame-opcode-octet)
+   (frame-opcode :initform nil :accessor frame-opcode)
+   (frame-fin :initform nil :accessor frame-fin)
+   (frame-length :initform nil :accessor frame-length)
+   ;; used by resource handler to mark a rejected connection, so already
+   ;; queued messages can be dropped
+   (connection-rejected :initform nil :accessor client-connection-rejected))
   (:documentation "Per-client data used by a WebSockets server."))
 
 (defmethod client-reader-active ((client client))
@@ -262,8 +285,13 @@ as a WebSockets frame."
 (defparameter *close-frame* (make-array 2 :element-type '(unsigned-byte 8)
                                         :initial-contents '(#xff #x00)))
 
-(defun write-to-client (client string-or-keyword)
-  "Writes the given message to the client, where STRING-OR-KEYWORD is
+
+(defun %write-to-client (client octets-or-keyword)
+  "Writes given data to specified client, where OCTETS-OR-KEYWORD is
+either an octet-vector, or :CLOSE, or a list (:CLOSE CLOSE-OCTETS), where
+CLOSE-OCTETS is an octet vector to send for close frame. If no close
+frame is provided, a default close frame will be sent."
+  #++ "Writes the given message to the client, where STRING-OR-KEYWORD is
 either a string, an octet-vector, or :CLOSE.  If it is a string, it is
 sent to the client as a framed message.  An octet vector is assumed to
 be a valid frame and sent without further translation. :close closes
@@ -272,23 +300,32 @@ the connection."
   ;; against connections closing at arbitrary points in time
   (unless (client-write-closed client)
     (let ((hook (%client-server-hook client)))
-      (etypecase string-or-keyword
-        (string
+      (etypecase octets-or-keyword
+        #++(string
          ;; this is ugly, figure out how to write in 1 chunk without encoding
          ;; to a temp buffer and copying...
          (%client-enqueue-write-or-kill (make-frame-from-string string-or-keyword)
                                         client))
-        ((eql :close)
-         ;; draft-76/00 adds a close handshake, so enqueue that as
-         ;; well when closing socket
-         (%client-enqueue-write-or-kill *close-frame* client)
+        ((or (eql :close)
+             (cons (eql :close)
+                   (cons (vector (unsigned-byte 8)))))
+         #++(%client-enqueue-write-or-kill *close-frame* client)
+         (when (eq :connected (client-connection-state client))
+           (if (and (consp octets-or-keyword)
+                    (cadr octets-or-keyword))
+              (%client-enqueue-write-or-kill (cadr octets-or-keyword) client)
+              (%client-enqueue-write-or-kill (close-frame-for-protocol
+                                              (client-websocket-version client))
+                                             client))
+           (setf (client-connection-state client) :closing))
          (%client-enqueue-write-or-kill :close client))
         ((vector (unsigned-byte 8))
-         (%client-enqueue-write-or-kill string-or-keyword client)))
+         (%client-enqueue-write-or-kill octets-or-keyword client)))
       (funcall hook
                (lambda ()
                  (client-enable-handler client :write t))))))
 
+#++
 (defun write-to-clients (clients string)
   "Like WRITE-TO-CLIENT but sends the message to all of the clients."
   ;; fixme: validate type of STRING?

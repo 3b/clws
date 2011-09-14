@@ -23,7 +23,8 @@
    #:run-server
    #:client-port
    #:client-host
-   #:resource-client-connected))
+   #:resource-client-connected
+   #:client-connection-rejected))
    
 (in-package :clws)
 

@@ -42,6 +42,8 @@ connections and has a bunch of client instances that it controls."))
         (lg "got client connection from ~s ~s~%" (client-host client)
             (client-port client))
         (lg "client count = ~s/~s~%" (server-client-count server) *max-clients*)
+        ;; fixme: probably shouldn't do this if we are dropping the connection
+        ;; due to too many connections?
         (setf (gethash client (server-clients server)) client)
         (cond
           ((and *max-clients* (> (server-client-count server) *max-clients*))
