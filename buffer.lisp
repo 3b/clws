@@ -19,7 +19,7 @@
 ;;;   add a chunk (vector+bounds)
 ;;;     -- check last chunk and combine if contiguous
 ;;;   append another buffer
-;;;     -- combine last/first chunks if contigous?
+;;;     -- combine last/first chunks if contiguous?
 ;;;   read an octet
 ;;;   convert to a contiguous vector
 ;;;   (32bit xor for websockets masking stuff? maybe subclass?)
@@ -151,9 +151,7 @@
     #++(babel:octets-to-string vector :encoding :utf-8 :errorp errorp)
     ;; babel isn't picky enough for the Autobahn test suite (it lets
     ;; utf16 surrogates through, so using flexistreams for now...
-    (flex:octets-to-string vector :external-format :utf-8)
-)
-  )
+    (flex:octets-to-string vector :external-format :utf-8)))
 
 ;;; this doesn't really belong here, too lazy to make a websockets
 ;;; specific subclass for now though
@@ -208,10 +206,7 @@
 
 
 (defclass buffered-reader ()
-  ;; not sure if buffered amount should be stored, or just calculate
-  ;; from chunks?
-  (#++(amount-buffered :initform 0 :accessor amount-buffered)
-   ;; patially filled vector if any, + position of next empty octet
+  (;; partially filled vector if any, + position of next empty octet
    (partial-vector :accessor partial-vector :initform nil)
    (partial-vector-pos :accessor partial-vector-pos :initform 0)
    ;; list of arrays + start,end values (in reverse order)
@@ -240,9 +235,9 @@
 ;;; low level implementations
 ;;; non-blocking iolib
 ;;;    when buffer gets more data, it checks predicate and calls
-;;;    callback if matched, and gets new predicate+callback as return
-;;;    from callback, and repeats until predicate doesn't match, at
-;;;    which point it waits for more input
+;;;    callback if matched. Callback sets new predicate+callback, and
+;;;    loop repeats until predicate doesn't match, at which point it
+;;;    waits for more input
 (defun add-reader-to-client (client &key (init-function 'match-resource-line))
   (declare (optimize debug))
   (setf (client-reader client)
@@ -266,7 +261,6 @@
                                               :start (partial-vector-pos buffer)
                                               :end (length (partial-vector buffer)))
                        (declare (ignore _octets))
-                       #++(format t "read ~s octets from socket~%" count)
                        (when (zerop count)
                          (error 'end-of-file))
                        (let* ((start (partial-vector-pos buffer))
@@ -279,16 +273,11 @@
                                   (add-chunk (chunks buffer)
                                              (partial-vector buffer)
                                              start (or match end))
-                                  #++(incf (amount-buffered buffer)
-                                        (- (or match end) start))
                                   (when match
-                                    #++(format t "got match = ~s, ~s/~s~%" match start end)
-                                    (let ((*print-length* 10))
-                                      #++(format t " == ~s~%" (subseq (partial-vector buffer) start match)))
                                     (setf start match)
                                     (funcall (callback buffer) buffer))
                                while (and (not failed) match (>= end start)))
-                         ;; todo: if we used ap all the data that was read, dump
+                         ;; todo: if we used up all the data that was read, dump
                          ;; the buffer in a pool or something so we don't hold
                          ;; a buffer in ram for each client while waiting for
                          ;; data
@@ -301,10 +290,7 @@
                      ;; probably can send directly since running from
                      ;; server thread here?
                      (write-to-client-close client :code (status-code e)
-                                            :message (status-message e))
-                     #++
-                     (send-close-frame client (status-code e)
-                                       (status-message e)))
+                                            :message (status-message e)))
                    (setf (client-connection-state client) :failed)
                    (client-enqueue-read client (list client :eof))
                    (format t "failed connection ~s / ~s : ~s ~s~%"
@@ -314,30 +300,21 @@
                                              :write t))
                  (close-from-peer (e)
                    (when (eq (client-connection-state client) :connected)
-                     (write-to-client-close client)
-                     #++(send-close-frame client 1000 ""))
+                     (write-to-client-close client))
                    (format t "got close frame from peer: ~s / ~s~%"
                            (status-code e) (status-message e))
                    (setf (client-connection-state client) :cloed)
                    ;; probably should send code/message to resource handlers?
                    (client-enqueue-read client (list client :eof))
                    (client-disconnect client :read t
-                                             :write t)
-
-)
+                                             :write t))
                  ;; close connection on socket/read errors
                  (end-of-file ()
                    (client-enqueue-read client (list client :eof))
                    (format t "closed connection ~s / ~s~%" (client-host client)
                            (client-port client))
                    (client-disconnect client :read t
-                                             :write t #++(not (member
-                                                          (client-read-state client)
-                                                          ;; fixme: there is a bug in here somewhere.  when we
-                                                          ;; are in state :frame-00 or :frame-ff we never close
-                                                          ;; the socket sometimes.
-                                                          nil #+nil '(:frame-00 :frame-ff)
-                                                          ))))
+                                             :write t))
                  (socket-connection-reset-error ()
                    (client-enqueue-read client (list client :eof))
                    (format t "connection reset by peer ~s / ~s~%" (client-host client)
@@ -346,8 +323,7 @@
                  ;; ... add error handlers
                  )
              (drop-connection ()
-               (client-disconnect client :read t :write t :abort t))
-))))
+               (client-disconnect client :read t :write t :abort t))))))
   (client-enable-handler client :read t))
 
 (defun next-reader-state (buffer predicate callback)

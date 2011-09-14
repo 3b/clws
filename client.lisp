@@ -22,7 +22,7 @@
                 :documentation "Flag indicates read side of the
                 connection is closed")
    (write-closed :initform nil :accessor client-write-closed
-                :documentation "Flag indicates write side of the
+                 :documentation "Flag indicates write side of the
                 connection is closed")
    (closed :initform nil :accessor client-socket-closed
            :documentation "Flag indicates connection is closed")
@@ -40,26 +40,12 @@
                 reenable reader after being disabled for flow
                 control (mailbox instead of queue since it tracks
                 length).")
-   #++
-   (read-buffers :initform nil :accessor client-read-buffers
-                 :documentation "List of partial buffers + offsets of
-                 CR/LF/etc to be decoded into a line/frame once the
-                 end is found offsets are inclusive start/end pairs,
-                 NIL for continued from previous or continued to next
-                 chunk")
-   ;; fixme: probably should hide write access to counts behind
-   ;; functions that manipulate the buffer?
-   #++
-   (read-buffer-octets :initform 0 :accessor client-read-buffer-octets
-                       :documentation "Total octets in
-                       read-buffers (so we can reject overly large
-                       frames/headers)")
    (read-queue :initform (make-mailbox)
                ;; possibly should have separate writer?
                :accessor client-read-queue
                :documentation "queue of decoded lines/frames")
    (connection-state :initform :connecting :accessor client-connection-state
-               :documentation "State of connection:
+                     :documentation "State of connection:
 :connecting when initially created
 :headers while reading headers,
 :connected after server handshake sent
@@ -230,7 +216,6 @@ if both sides shutdown"))
                       (client-write-closed client)))
              (not (client-socket-closed client)))
     (lg "removing client ~s (closed already? ~A)~%" (client-port client) (client-socket-closed client))
-    ;;(setf *foo* client )
     (setf (client-socket-closed client) t)
     (remhash client (server-clients (client-server client))))
   (lg "<<finish disconnect for ~s:~s ~s ~s / ~s ~s~%"
@@ -283,7 +268,7 @@ as a WebSockets frame."
                '(#xff)))
 
 (defparameter *close-frame* (make-array 2 :element-type '(unsigned-byte 8)
-                                        :initial-contents '(#xff #x00)))
+                                          :initial-contents '(#xff #x00)))
 
 
 (defun %write-to-client (client octets-or-keyword)
@@ -291,32 +276,21 @@ as a WebSockets frame."
 either an octet-vector, or :CLOSE, or a list (:CLOSE CLOSE-OCTETS), where
 CLOSE-OCTETS is an octet vector to send for close frame. If no close
 frame is provided, a default close frame will be sent."
-  #++ "Writes the given message to the client, where STRING-OR-KEYWORD is
-either a string, an octet-vector, or :CLOSE.  If it is a string, it is
-sent to the client as a framed message.  An octet vector is assumed to
-be a valid frame and sent without further translation. :close closes
-the connection."
   ;; fixme: ensure this function is truly thread-safe, particularly
   ;; against connections closing at arbitrary points in time
   (unless (client-write-closed client)
     (let ((hook (%client-server-hook client)))
       (etypecase octets-or-keyword
-        #++(string
-         ;; this is ugly, figure out how to write in 1 chunk without encoding
-         ;; to a temp buffer and copying...
-         (%client-enqueue-write-or-kill (make-frame-from-string string-or-keyword)
-                                        client))
         ((or (eql :close)
              (cons (eql :close)
                    (cons (vector (unsigned-byte 8)))))
-         #++(%client-enqueue-write-or-kill *close-frame* client)
          (when (eq :connected (client-connection-state client))
            (if (and (consp octets-or-keyword)
                     (cadr octets-or-keyword))
-              (%client-enqueue-write-or-kill (cadr octets-or-keyword) client)
-              (%client-enqueue-write-or-kill (close-frame-for-protocol
-                                              (client-websocket-version client))
-                                             client))
+               (%client-enqueue-write-or-kill (cadr octets-or-keyword) client)
+               (%client-enqueue-write-or-kill (close-frame-for-protocol
+                                               (client-websocket-version client))
+                                              client))
            (setf (client-connection-state client) :closing))
          (%client-enqueue-write-or-kill :close client))
         ((vector (unsigned-byte 8))
@@ -352,74 +326,69 @@ non-blocking fashion."
     (when (and fd
                (not (client-socket-closed client))
                (not (client-write-closed client)))
-     (flet ((enable ()
-              (when (and (not (client-socket-closed client))
-                         (not (client-writer-active client))
-                         (not (client-write-closed client)))
-                (set-io-handler (server-event-base (client-server client)) fd
-                                :write (lambda (fd event exception)
-                                         (declare (ignore fd event exception))
-                                         (try-write-client client)))
-                #++(setf (client-writer-active client) t))))
-       (handler-case
-           (loop
-             :do
-             (progn
-               ;; set up the active client-write-buffer
-               (unless (client-write-buffer client)
-                 (setf (client-write-buffer client) (client-dequeue-write client))
-                 (setf (client-write-offset client) 0))
+      (flet ((enable ()
+               (when (and (not (client-socket-closed client))
+                          (not (client-writer-active client))
+                          (not (client-write-closed client)))
+                 (set-io-handler (server-event-base (client-server client)) fd
+                                 :write (lambda (fd event exception)
+                                          (declare (ignore fd event exception))
+                                          (try-write-client client)))
+                 #++(setf (client-writer-active client) t))))
+        (handler-case
+            (loop
+              :do
+              (progn
+                ;; set up the active client-write-buffer
+                (unless (client-write-buffer client)
+                  (setf (client-write-buffer client) (client-dequeue-write client))
+                  (setf (client-write-offset client) 0))
 
-               ;; if we got a :close command, clean up the socket
-               (when (eql (client-write-buffer client) :close)
-                 (client-disconnect client :close t)
-                 (return-from try-write-client nil))
+                ;; if we got a :close command, clean up the socket
+                (when (eql (client-write-buffer client) :close)
+                  (client-disconnect client :close t)
+                  (return-from try-write-client nil))
 
-               (when (eql (client-write-buffer client) :enable-read)
-                 (client-enable-handler client :read t)
-                 (setf (client-write-buffer client) nil))
+                (when (eql (client-write-buffer client) :enable-read)
+                  (client-enable-handler client :read t)
+                  (setf (client-write-buffer client) nil))
 
-               (when (client-write-buffer client)
-                 (let ((count (send-to (client-socket client)
-                                       (client-write-buffer client)
-                                       :start (client-write-offset client)
-                                       :end (length (client-write-buffer client)))))
-                   (incf (client-write-offset client) count)
-                   (when (>= (client-write-offset client)
-                             (length (client-write-buffer client)))
-                     (setf (client-write-buffer client) nil))))
+                (when (client-write-buffer client)
+                  (let ((count (send-to (client-socket client)
+                                        (client-write-buffer client)
+                                        :start (client-write-offset client)
+                                        :end (length (client-write-buffer client)))))
+                    (incf (client-write-offset client) count)
+                    (when (>= (client-write-offset client)
+                              (length (client-write-buffer client)))
+                      (setf (client-write-buffer client) nil))))
 
-               ;; if we didn't write the entire buffer, make sure the writer is
-               ;; enabled, and exit the loop
+                ;; if we didn't write the entire buffer, make sure the writer is
+                ;; enabled, and exit the loop
 
-               ;; > But shouldn't we ensure that the writer is enabled
-               ;; > regardless of whether iolib manages to write out the
-               ;; > entire buffer? -- RED
-               (when (client-write-buffer client)
-                 (enable)
-                 (loop-finish))
+                ;; > But shouldn't we ensure that the writer is enabled
+                ;; > regardless of whether iolib manages to write out the
+                ;; > entire buffer? -- RED
+                (when (client-write-buffer client)
+                  (enable)
+                  (loop-finish))
 
-               (when (mailbox-empty-p (client-write-queue client))
-                 (client-disable-handler client :write t)
-                 (loop-finish))))
+                (when (mailbox-empty-p (client-write-queue client))
+                  (client-disable-handler client :write t)
+                  (loop-finish))))
 
-         (isys:ewouldblock ()
-           (enable)
-           nil)
-         (isys:epipe ()
-           ;; client closed conection, so drop it...
-           (lg "epipe~%")
-           (client-enqueue-read client (list client :dropped))
-           (client-disconnect client :close t))
-         (socket-connection-reset-error ()
-           (lg "connection reset~%")
-           (client-enqueue-read client (list client :dropped))
-           (client-disconnect client :close t)))))))
-
-(defparameter %frame-start% (make-array 1 :element-type '(unsigned-byte 8)
-                                        :initial-element #x00))
-(defparameter %frame-end% (make-array 1 :element-type '(unsigned-byte 8)
-                                      :initial-element #xff))
+          (isys:ewouldblock ()
+            (enable)
+            nil)
+          (isys:epipe ()
+            ;; client closed conection, so drop it...
+            (lg "epipe~%")
+            (client-enqueue-read client (list client :dropped))
+            (client-disconnect client :close t))
+          (socket-connection-reset-error ()
+            (lg "connection reset~%")
+            (client-enqueue-read client (list client :dropped))
+            (client-disconnect client :close t)))))))
 
 
 (defun %client-enqueue-write-or-kill (frame client)
@@ -431,7 +400,7 @@ non-blocking fashion."
       ((> (mailbox-count (client-write-queue client))
           *max-write-backlog*)
        (lg "client write backlog = ~s, killing conectiom~%"
-               (mailbox-count (client-write-queue client)))
+           (mailbox-count (client-write-queue client)))
        (funcall (%client-server-hook client)
                 (lambda ()
                   (client-disconnect client :abort t)
@@ -450,23 +419,4 @@ read and processed."
   "Non-blocking call to dequeue a piece of data from a client' read-queue."
   (mailbox-receive-message-no-hang (client-read-queue client)))
 
-(defun store-partial-read (client data offset)
-  ;; fixme: should check for read-buffer-octets getting too big here?
-  (push (list data offset) (client-read-buffers client))
-  (incf (client-read-buffer-octets client) (length data)))
-
-(defun extract-read-chunk-as-utf-8 (client)
-  (let ((*print-pretty* nil))
-    (with-output-to-string (str)
-      (loop for chunk in (nreverse (client-read-buffers client))
-         for (b (s n . more)) = chunk
-         do
-           (format str "~a" (babel:octets-to-string b :start (or s 0) :end n))
-         finally (if (and more (integerp (car n)))
-                     (setf (second chunk) more
-                           (client-read-buffers client) (list chunk)
-                           (client-read-buffer-octets client) (- (length chunk)
-                                                                 (car more)))
-                     (setf (client-read-buffers client) nil
-                           (client-read-buffer-octets client) 0))))))
 

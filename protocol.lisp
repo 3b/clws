@@ -11,8 +11,6 @@
     (lambda (buffer start end)
       (declare (ignore buffer))
       (let ((c (- end start)))
-        #++(format t "octet-count-matcher n=~s, read=~s,c=~s~%"
-                n read c)
         (if (>= (+ read c) n)
             (+ (- n read) start)
             (progn (incf read c) nil))))))
@@ -21,28 +19,28 @@
   (let ((matched 0)
         (read 0)
         (next (make-array (length octets) :initial-element 0
-                          :element-type 'fixnum)))
-    ;; find next shortest substring that could be a match for current
+                                          :element-type 'fixnum)))
+    ;; find next shortest sub-string that could be a match for current
     ;; position in octets. for example if we have matched "aaa" from "aaab"
-    ;; and get anothet "a", we should reset match to "aa" rather than
+    ;; and get another "a", we should reset match to "aa" rather than
     ;; starting over completely (and then add the new "a" to end up back at
     ;; "aaa" again)
     ;; -- probably should add a compiler macro to do this in advance for
     ;;    the usual case of constant pattern?
     (loop
-       with matches = 0
-       for i from 1 below (length octets)
-       when (= (aref octets matches) (aref octets i))
-       do (incf matches)
-       else do (setf matches 0)
-       do (setf (aref next i) matches))
+      with matches = 0
+      for i from 1 below (length octets)
+      when (= (aref octets matches) (aref octets i))
+        do (incf matches)
+      else do (setf matches 0)
+      do (setf (aref next i) matches))
     (lambda (buffer start end)
       (flet ((match-octet (x)
                (loop
-                  do (if (= x (aref octets matched))
-                         (return (incf matched))
-                         (setf matched (aref next matched)))
-                  while (plusp matched))))
+                 do (if (= x (aref octets matched))
+                        (return (incf matched))
+                        (setf matched (aref next matched)))
+                 while (plusp matched))))
         (loop
           for i from 0
           for bi from start below end
@@ -53,7 +51,6 @@
             return (values (1+ bi) read)
           when (and max-octets (> read max-octets))
             do (error "todo: handle this properly"))))))
-
 
 
 (defun unsupported-protocol-version (client)
@@ -71,7 +68,7 @@ Sec-WebSocket-Version: ~{~s~^, ~}
 " *supported-protocol-versions*)
     :encoding :utf-8))
   (client-enqueue-write client :close)
-  ;; is this needed after enqueing :close?
+  ;; is this needed after enqueueing :close?
   (client-disconnect client :read t :write t)
   (ignore-remaining-input client))
 
@@ -145,7 +142,7 @@ Sec-WebSocket-Version: ~{~s~^, ~}
                        (declare (ignore b))
                        (unless (= s e)
                         e))
-                     (lambda (x) (declare (ignore x)) #++(break)
+                     (lambda (x) (declare (ignore x))
                              #|| do nothing ||#)))
 
 
@@ -171,16 +168,8 @@ Sec-WebSocket-Version: ~{~s~^, ~}
   (next-reader-state
    client (octet-pattern-matcher #(13 10 13 10))
    (lambda (x)
-     #++(format t "testing...~%")
-     #++(format t "chunks = ~s~%" (chunks client))
-     #++(format t " ~{~s ~s ~s~}~%" (mapcan (lambda (a)
-                                           (list nil #++(buffer-vector a)
-                                                     (buffer-start a)
-                                                     (buffer-end a)))
-                                         (chunks client)))
      (let ((headers (with-buffer-as-stream (x s)
                       (chunga:read-http-headers s))))
-       (format t "matched CRLFCRLF, ~s~%" headers)
        (setf (client-connection-headers client) (alexandria:alist-hash-table headers))
        (dispatch-protocols client)))))
 
@@ -229,36 +218,6 @@ Sec-WebSocket-Version: ~{~s~^, ~}
        (when body
          (write-sequence body s))))))
 
-#++
-(defun build-frames (opcode octets frame-size)
-  (loop for op = opcode then 0
-        for octets-left = (length octets) then (- octets-left frame-octets)
-        for fin = (if (<= octets-left frame-size) #x80 #x00)
-        for offset = 0 then (+ offset frame-octets)
-        for frame-octets = (min octets-left frame-size)
-        collect (flex:with-output-to-sequence (s)
-                  (write-byte (logior fin op) s)
-                  ;; MASK = 0, length
-                  (cond
-                    ((< frame-octets 126)
-                     (write-byte frame-octets s))
-                    ((< frame-octets 65536)
-                     (write-byte 126 s)
-                     (write-byte (ldb (byte 8 8) frame-octets) s)
-                     (write-byte (ldb (byte 8 0) frame-octets) s))
-                    (t
-                     (write-byte 127 s)
-                     (loop for i from 7 downto 0
-                           do (write-byte (ldb (byte 8 (* i 8))
-                                               frame-octets)
-                                          s))))
-                  (when (plusp frame-octets)
-                    (write-sequence octets s
-                                    :start offset
-                                    :end (+ offset frame-octets))))
-        ;; check at end so we can send an empty frame if we want
-        while (and (plusp octets-left)
-                   (/= octets-left frame-octets))))
 
 (defun build-frames (opcode octets frame-size)
   ;; sending non-simple vectors is slow, so don't want to use
@@ -338,16 +297,11 @@ be ignored otherwise)"
   "writes a text message to client. MESSAGE should either be a string,
 or an octet vector containing a UTF-8 encoded string. If FRAME-SIZE is
 set, breaks message into frames no larger than FRAME-SIZE octets."
-  (let ((*print-length* 40)
-        (*print-pretty* nil))
-    #++(format t "write-to-client-text ~s~%" message))
   (loop for frame in (text-message-for-protocol
                       (client-websocket-version client)
                       message
                       :frame-size frame-size)
-        do (let ((*print-length* 40))
-             #++(format t "send text frame ~s~%" frame))
-           (%write-to-client client frame)))
+        do (%write-to-client client frame)))
 
 
 (defun write-to-client-binary (client message &key frame-size)

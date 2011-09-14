@@ -28,11 +28,11 @@ resource."
         (list resource-handler origin-validation-fn)))
 
 (defun find-global-resource (name)
-  "Returns the resource registerd via REGISTER-GLOBAL-RESOURCE with name NAME."
+  "Returns the resource registered via REGISTER-GLOBAL-RESOURCE with name NAME."
   (first (gethash name *resources*)))
 
 (defun unregister-global-resource (name)
-  "Removes the resource registerd via REGISTER-GLOBAL-RESOURCE with name NAME."
+  "Removes the resource registered via REGISTER-GLOBAL-RESOURCE with name NAME."
   (remhash name *resources*))
 
 (defun valid-resource-p (server resource)
@@ -71,7 +71,7 @@ the origins passed as arguments exactly."
   (:documentation "A server may have many resources, each associated
   with a particular resource path (like /echo or /chat).  An single
   instance of a resource handles all requests on the server for that
-  particular url, with the thelp of RUN-RESOURCE-LISTENER,
+  particular url, with the help of RUN-RESOURCE-LISTENER,
   RESOURCE-RECEIVED-FRAME, and RESOURCE-CLIENT-DISCONNECTED."))
 
 (defgeneric resource-accept-connection (res resource-name headers client)
@@ -88,10 +88,10 @@ Passed values
 
 Returns values
     1. NIL if the connection should be rejected, or non-nil otherwise
-    2. Concurrent mailbox in which to place messages received from the 
+    2. Concurrent mailbox in which to place messages received from the
        client, or NIL for default
-    3. origin origin from which to claim this resource is responding, 
-       or NIL  for default.
+    3. origin from which to claim this resource is responding, or NIL
+       for default.
     4. handshake-resource or NIL for default
     5. protocol or NIL for default
 
@@ -179,11 +179,9 @@ RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
         ;; the remaining messages
         :while (not (eql data :close-resource))
         :do
-        #++(format t "~%got message --~s--~%" data)
         (cond
           ((and client (client-connection-rejected client))
-           ;; ignore any further queued data from this client
-           )
+           #|| ignore any further queued data from this client ||#)
           ((eql data :connect)
            (when (eq :reject (resource-client-connected resource client))
              (setf (client-connection-rejected client) t)
@@ -209,8 +207,7 @@ RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
                (resource-received-text resource client (cadr data))
                (resource-received-binary resource client (cadr data))))
           (t
-           (error "got unknown data in run-resource-listener?")
-           #++ (resource-received-frame resource client data)))))
+           (error "got unknown data in run-resource-listener?")))))
 
 (defun kill-resource-listener (resource)
   "Terminates a RUN-RESOURCE-LISTENER from another thread."
