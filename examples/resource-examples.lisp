@@ -11,8 +11,13 @@
  (make-instance 'echo-resource)
  (ws::origin-prefix "http://127.0.0.1" "http://localhost"))
 
+#++
 (defmethod resource-accept-connection ((res echo-resource) resource-name headers client)
   (declare (ignore headers resource-name))
+  (format t "got connection on echo server from ~s : ~s~%" (client-host client) (client-port client))
+  t)
+
+(defmethod resource-client-connected ((res echo-resource) client)
   (format t "got connection on echo server from ~s : ~s~%" (client-host client) (client-port client))
   t)
 
