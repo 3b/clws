@@ -81,17 +81,6 @@ Sec-WebSocket-Accept: ~a
                            :encoding :iso-8859-1)))
       t)))
 
-(defun get-utf8-string-or-fail (chunk-buffer)
-  (handler-case
-      (get-utf8-string chunk-buffer)
-    (flexi-streams:external-format-encoding-error ()
-      (error 'fail-the-websockets-connection
-             :status-code 1007
-             :message "invalid UTF-8"))
-    (babel:character-coding-error ()
-      (error 'fail-the-websockets-connection
-             :status-code 1007
-             :message "invalid UTF-8"))))
 
 (defun dispatch-message (client)
   (let ((opcode (message-opcode client))

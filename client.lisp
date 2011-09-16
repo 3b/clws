@@ -282,6 +282,7 @@ frame is provided, a default close frame will be sent."
     (let ((hook (%client-server-hook client)))
       (etypecase octets-or-keyword
         ((or (eql :close)
+             (cons (eql :close) (cons null))
              (cons (eql :close)
                    (cons (vector (unsigned-byte 8)))))
          (when (eq :connected (client-connection-state client))

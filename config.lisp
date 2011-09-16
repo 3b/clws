@@ -2,6 +2,9 @@
 
 ;;; some of these should probably be per resource handler rather than global?
 
+(defparameter *protosol-76/00-support* nil
+  "set to NIL to disable draft-hixie-76/draft-ietf-00 support, true to enable.")
+
 (defparameter *max-clients* 256
   "Max number of simultaneous clients allowed (nil for no limit).
 Extra connections will get a HTTP 5xx response (without reading headers).")
@@ -28,7 +31,7 @@ to be buffered indefinitely though, so be careful with large settings.")
  start throttling reads for clients using that queue (for now, just
  drops the connections...).")
 
-(defparameter *policy-file* (make-domain-policy)
+(defparameter *policy-file* (make-domain-policy :from "*" :to-port "*")
   "cross-domain policy file, used for the Flash WebSocket emulator.")
 
 (defparameter *400-message* (babel:string-to-octets

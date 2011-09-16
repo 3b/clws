@@ -50,7 +50,9 @@
           when (= matched (length octets))
             return (values (1+ bi) read)
           when (and max-octets (> read max-octets))
-            do (error "todo: handle this properly"))))))
+            do (error 'fail-the-websockets-connection
+                      :status-code 1009
+                      :message (format nil "message too large")))))))
 
 
 (defun unsupported-protocol-version (client)
@@ -183,16 +185,20 @@ Sec-WebSocket-Version: ~{~s~^, ~}
          (version (gethash :sec-websocket-version headers)))
     (cond
       ((and (not version)
-            (gethash :sec-websockeys-key1 headers)
-            (gethash :sec-websockeys-key2 headers)
-            ;; protocol 76/00
-            (protocol-76/00-nonce client)))
+            (gethash :sec-websocket-key1 headers)
+            (gethash :sec-websocket-key2 headers))
+       ;; protocol 76/00
+       (if *protosol-76/00-support*
+           (protocol-76/00-nonce client)
+           (unsupported-protocol-version client)))
       (version
        (if (gethash version *protocol-header-parsers*)
            (funcall (gethash version *protocol-header-parsers*)
                     client)
            (unsupported-protocol-version client)))
       (t
+       (format t "couldn't detect version? headers=~s~%"
+               (alexandria:hash-table-alist headers))
        (invalid-header client)))))
 
 
@@ -299,10 +305,11 @@ Sec-WebSocket-Version: ~{~s~^, ~}
     (case protocol
       (0
        ;; todo: decide if frame-size should apply to draft76/00 ?
-       (flex:with-output-to-sequence (s)
-         (write-byte #x00 s)
-         (write-sequence utf8 s)
-         (write-byte #xff s)))
+       (list
+        (flex:with-output-to-sequence (s)
+          (write-byte #x00 s)
+          (write-sequence utf8 s)
+          (write-byte #xff s))))
       ((7 8 13)
        (build-frames #x01 utf8 frame-size)))))
 

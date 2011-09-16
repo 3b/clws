@@ -7,7 +7,9 @@ WebSocket emulation via Flash.
 For more information on what that is, see
 http://www.adobe.com/devnet/articles/crossdomain_policy_file_spec.html"
   (babel:string-to-octets
-   (format nil "<cross-domain-policy><allow-access-from domain=\"~a\" to-ports=\"~a\" /></cross-domain-policy>~c"
+   (format nil "<?xml version=\"1.0\"?>
+<!DOCTYPE cross-domain-policy SYSTEM \"http://www.macromedia.com/xml/dtds/cross-domain-policy.dtd\">
+<cross-domain-policy><allow-access-from domain=\"~a\" to-ports=\"~a\" /></cross-domain-policy>~c"
            from to-port
            (code-char 0))
    :encoding :ascii))

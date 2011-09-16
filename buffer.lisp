@@ -131,7 +131,7 @@
           do (replace vector cv :start1 offset :start2 cs :end2 ce))
     vector))
 
-(defmethod get-utf8-string ((cb chunk-buffer) &key (errorp t))
+(defmethod get-utf8-string ((cb chunk-buffer) &key (errorp t) octet-end)
   (declare (ignorable errorp))
   ;; not sure if it would be faster to pull through flexistreams
   ;; or make a separate octet vector and convert that with babel?
@@ -143,8 +143,10 @@
   ;;   we should see the partial char in the first tiny chunk...)
   ;;  (or maybe just implement our own converter since we only need utf8?))
   (let* ((size (buffer-size cb))
-         (vector (make-array size :element-type '(unsigned-byte 8)
-                                  :initial-element 0))
+         (end (or octet-end size))
+         (vector (make-array end
+                             :element-type '(unsigned-byte 8)
+                             :initial-element 0))
          (chunks (%get-chunks cb)))
     (loop for c in chunks
           for offset = 0 then (+ offset size)
@@ -152,7 +154,9 @@
           for cv of-type (simple-array (unsigned-byte 8) (*)) = (buffer-vector c)
           for cs = (buffer-start c)
           for ce = (buffer-end c)
-          do (replace vector cv :start1 offset :start2 cs :end2 ce))
+          while (< offset end)
+          do (replace vector cv :start1 offset :end1 end
+                                :start2 cs :end2 ce))
     ;; todo: probably should wrap babel error in something that doesn't leak
     ;; implementation details (like use of babel)
     #++(babel:octets-to-string vector :encoding :utf-8 :errorp errorp)
