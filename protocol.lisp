@@ -134,6 +134,38 @@ Sec-WebSocket-Version: ~{~s~^, ~}
            (setf (client-query-string buffer) query))))
      (match-headers buffer))))
 
+;;; websockets emulation using flash needs to be able to read a
+;;; flash 'policy file' to connect
+(defparameter *policy-file-request*
+  (concatenate '(vector (unsigned-byte 8))
+               (babel:string-to-octets "<policy-file-request/>")
+               #(0)))
+
+(defun match-policy-file (buffer)
+  (next-reader-state
+   buffer
+   (octet-pattern-matcher #(0))
+   (alexandria:named-lambda policy-file-callback (buffer)
+     (let ((request (get-octet-vector (chunks buffer))))
+       (unless (and request (equalp request *policy-file-request*))
+         (format t "broken policy file request?~%")
+         (return-from policy-file-callback
+           (invalid-header buffer)))
+       (format t "send policy file~%")
+       (client-enqueue-write buffer *policy-file*)
+       #++(%write-to-client buffer :close)
+       #++(babel:octets-to-string *policy-file* :encoding :ascii)
+       (client-disconnect buffer :read t :write t)
+       (ignore-remaining-input buffer)))))
+
+(defun maybe-policy-file (buffer)
+  (next-reader-state buffer
+                     (octet-count-matcher 2)
+                     (lambda (buffer)
+                       (if (eql (peek-octet (chunks buffer)) (char-code #\<))
+                           (match-policy-file buffer)
+                           (match-resource-line buffer)))))
+
 (defun ignore-remaining-input (client)
   ;; just accept any input and junk it, for use when no more input expected
   ;; or we don't care...

@@ -72,6 +72,13 @@
   (loop for i in (%get-chunks more)
         do (add-chunk cb (buffer-vector i) (buffer-start i) (buffer-end i))))
 
+(defmethod peek-octet ((cb chunk-buffer))
+  ;; fixme: decide how to handle EOF?
+  (unless (chunks cb)
+    (return-from peek-octet nil))
+  (let* ((chunk (car (chunks cb))))
+    (aref (buffer-vector chunk) (buffer-start chunk))))
+
 (defmethod read-octet ((cb chunk-buffer))
   ;; fixme: decide how to handle EOF?
   (unless (chunks cb)
@@ -238,7 +245,7 @@
 ;;;    callback if matched. Callback sets new predicate+callback, and
 ;;;    loop repeats until predicate doesn't match, at which point it
 ;;;    waits for more input
-(defun add-reader-to-client (client &key (init-function 'match-resource-line))
+(defun add-reader-to-client (client &key (init-function 'maybe-policy-file))
   (declare (optimize debug))
   (setf (client-reader client)
         (let ((socket (client-socket client))
