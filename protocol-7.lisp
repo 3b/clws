@@ -199,6 +199,19 @@ Sec-WebSocket-Accept: ~a
               :message (format nil "unknown data frame #x~2,'0x" opcode))))))
 
 (defun protocol-7+-read-frame (client length mask)
+  (cond
+    ((and (>= (frame-opcode client) 8)
+          (or (not (frame-fin client))
+              (> length 125)))
+     (error 'fail-the-websockets-connection
+            :status-code 1002
+            :message (if (frame-fin client)
+                         "fragmented control frame"
+                         "control frame too large")))
+    ((> length *max-read-frame-size*)
+     (error 'fail-the-websockets-connection
+            :status-code 1009
+            :message (format nil "frame too large"))))
   (next-reader-state
    client (octet-count-matcher length)
    (lambda (client)
