@@ -257,84 +257,94 @@
           (funcall init-function buffer)
           (lambda (fd event exception)
             (declare (ignore fd event exception))
-            (restart-case
-                (handler-case
-                    (progn
-                      (when (or (not (partial-vector buffer))
-                                (> (partial-vector-pos buffer)
-                                   (- (length (partial-vector buffer)) 16)))
-                        (setf (partial-vector buffer)
-                              (make-array 2048 :element-type '(unsigned-byte 8))
-                              (partial-vector-pos buffer) 0))
-                      (multiple-value-bind (_octets count)
-                          ;; fixme: decide on good max read chunk size
-                          (receive-from socket :buffer (partial-vector buffer)
-                                               :start (partial-vector-pos buffer)
-                                               :end (length (partial-vector buffer)))
-                        (declare (ignore _octets))
-                        (when (zerop count)
-                          (error 'end-of-file))
-                        (let* ((start (partial-vector-pos buffer))
-                               (end (+ start count))
-                               (failed nil))
-                          (loop for match = (funcall (predicate buffer)
-                                                     (partial-vector buffer)
-                                                     start end)
-                                do
-                                   (add-chunk (chunks buffer)
-                                              (partial-vector buffer)
-                                              start (or match end))
-                                   (when match
-                                     (setf start match)
-                                     (funcall (callback buffer) buffer))
-                                while (and (not failed) match (>= end start)))
-                          ;; todo: if we used up all the data that was read, dump
-                          ;; the buffer in a pool or something so we don't hold
-                          ;; a buffer in ram for each client while waiting for
-                          ;; data
-                          (setf (partial-vector-pos buffer) end))
+            (handler-bind
+                ((error
+                   (lambda (c)
+                     (cond
+                       (*debug-on-server-errors*
+                        (invoke-debugger c))
+                       (t
+                        (ignore-errors
+                         (lg "server error ~s, dropping connection~%" c))
+                        (invoke-restart 'drop-connection))))))
+              (restart-case
+                  (handler-case
+                      (progn
+                        (when (or (not (partial-vector buffer))
+                                  (> (partial-vector-pos buffer)
+                                     (- (length (partial-vector buffer)) 16)))
+                          (setf (partial-vector buffer)
+                                (make-array 2048 :element-type '(unsigned-byte 8))
+                                (partial-vector-pos buffer) 0))
+                        (multiple-value-bind (_octets count)
+                            ;; fixme: decide on good max read chunk size
+                            (receive-from socket :buffer (partial-vector buffer)
+                                                 :start (partial-vector-pos buffer)
+                                                 :end (length (partial-vector buffer)))
+                          (declare (ignore _octets))
+                          (when (zerop count)
+                            (error 'end-of-file))
+                          (let* ((start (partial-vector-pos buffer))
+                                 (end (+ start count))
+                                 (failed nil))
+                            (loop for match = (funcall (predicate buffer)
+                                                       (partial-vector buffer)
+                                                       start end)
+                                  do
+                                     (add-chunk (chunks buffer)
+                                                (partial-vector buffer)
+                                                start (or match end))
+                                     (when match
+                                       (setf start match)
+                                       (funcall (callback buffer) buffer))
+                                  while (and (not failed) match (>= end start)))
+                            ;; todo: if we used up all the data that was read, dump
+                            ;; the buffer in a pool or something so we don't hold
+                            ;; a buffer in ram for each client while waiting for
+                            ;; data
+                            (setf (partial-vector-pos buffer) end))
 
-                        ))
-                  ;; protocol errors
-                  (fail-the-websockets-connection (e)
-                    (when (eq (client-connection-state client) :connected)
-                      ;; probably can send directly since running from
-                      ;; server thread here?
-                      (write-to-client-close client :code (status-code e)
-                                                    :message (status-message e)))
-                    (setf (client-connection-state client) :failed)
-                    (client-enqueue-read client (list client :eof))
-                    (format t "failed connection ~s / ~s : ~s ~s~%"
-                            (client-host client) (client-port client)
-                            (status-code e) (status-message e))
-                    (client-disconnect client :read t
-                                              :write t))
-                  (close-from-peer (e)
-                    (when (eq (client-connection-state client) :connected)
-                      (write-to-client-close client))
-                    (format t "got close frame from peer: ~s / ~s~%"
-                            (status-code e) (status-message e))
-                    (setf (client-connection-state client) :cloed)
-                    ;; probably should send code/message to resource handlers?
-                    (client-enqueue-read client (list client :eof))
-                    (client-disconnect client :read t
-                                              :write t))
-                  ;; close connection on socket/read errors
-                  (end-of-file ()
-                    (client-enqueue-read client (list client :eof))
-                    (format t "closed connection ~s / ~s~%" (client-host client)
-                            (client-port client))
-                    (client-disconnect client :read t
-                                              :write t))
-                  (socket-connection-reset-error ()
-                    (client-enqueue-read client (list client :eof))
-                    (format t "connection reset by peer ~s / ~s~%" (client-host client)
-                            (client-port client))
-                    (client-disconnect client :read t))
-                  ;; ... add error handlers
-                  )
-              (drop-connection ()
-                (client-disconnect client :read t :write t :abort t))))))
+                          ))
+                    ;; protocol errors
+                    (fail-the-websockets-connection (e)
+                      (when (eq (client-connection-state client) :connected)
+                        ;; probably can send directly since running from
+                        ;; server thread here?
+                        (write-to-client-close client :code (status-code e)
+                                                      :message (status-message e)))
+                      (setf (client-connection-state client) :failed)
+                      (client-enqueue-read client (list client :eof))
+                      (format t "failed connection ~s / ~s : ~s ~s~%"
+                              (client-host client) (client-port client)
+                              (status-code e) (status-message e))
+                      (client-disconnect client :read t
+                                                :write t))
+                    (close-from-peer (e)
+                      (when (eq (client-connection-state client) :connected)
+                        (write-to-client-close client))
+                      (format t "got close frame from peer: ~s / ~s~%"
+                              (status-code e) (status-message e))
+                      (setf (client-connection-state client) :cloed)
+                      ;; probably should send code/message to resource handlers?
+                      (client-enqueue-read client (list client :eof))
+                      (client-disconnect client :read t
+                                                :write t))
+                    ;; close connection on socket/read errors
+                    (end-of-file ()
+                      (client-enqueue-read client (list client :eof))
+                      (format t "closed connection ~s / ~s~%" (client-host client)
+                              (client-port client))
+                      (client-disconnect client :read t
+                                                :write t))
+                    (socket-connection-reset-error ()
+                      (client-enqueue-read client (list client :eof))
+                      (format t "connection reset by peer ~s / ~s~%" (client-host client)
+                              (client-port client))
+                      (client-disconnect client :read t))
+                    ;; ... add error handlers
+                    )
+                (drop-connection ()
+                  (client-disconnect client :read t :write t :abort t)))))))
   (client-enable-handler client :read t))
 
 (defun next-reader-state (buffer predicate callback)

@@ -174,40 +174,67 @@ ignore any already received data from this client."))
 (defun run-resource-listener (resource)
   "Runs a resource listener in its own thread indefinitely, calling
 RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
-  (loop :for (client data) = (mailbox-receive-message (slot-value resource 'read-queue))
-        ;; fixme should probably call some generic function with all
-        ;; the remaining messages
-        :while (not (eql data :close-resource))
-        :do
-        (cond
-          ((and client (client-connection-rejected client))
-           #|| ignore any further queued data from this client ||#)
-          ((eql data :connect)
-           (when (eq :reject (resource-client-connected resource client))
-             (setf (client-connection-rejected client) t)
-             (write-to-client-close client)))
-          ((eql data :eof)
-           (disconnect-client client)
-           (write-to-client-close client))
-          ((eql data :dropped)
-           (disconnect-client client)
-           (write-to-client-close client))
-          ((eql data :close-resource)
-           (disconnect-client client))
-          ((eql data :custom)
-           ;; here we use the client place to store the custom message
-           (let ((message client))
-             (restart-case
-                 (resource-received-custom-message resource message)
-               (continue () :report "Continue"  ))))
-          ((symbolp data)
-           (error "Unknown symbol in read-queue of resource: ~S " data))
-          ((consp data)
-           (if (eq (car data) :text)
-               (resource-received-text resource client (cadr data))
-               (resource-received-binary resource client (cadr data))))
-          (t
-           (error "got unknown data in run-resource-listener?")))))
+  (macrolet
+      ((restarts (&body body)
+         `(handler-bind
+              ((error
+                 (lambda (c)
+                   (cond
+                     (*debug-on-resource-errors*
+                      (invoke-debugger c))
+                     (t
+                      (lg "resource handler error ~s, dropping client~%" c)
+                      (invoke-restart 'drop-client))))))
+            (restart-case
+                (progn ,@body)
+              (drop-client ()
+                (unless (client-connection-rejected client)
+                  (ignore-errors (disconnect-client client)))
+                ;; none of the defined status codes in draft 14 seem right for
+                ;; 'server error'
+                (ignore-errors (write-to-client-close client :code nil))
+                (setf (client-connection-rejected client) t))
+              (drop-message () #|| do nothing ||#)))))
+    (loop :for (client data) = (mailbox-receive-message (slot-value resource 'read-queue))
+          ;; fixme should probably call some generic function with all
+          ;; the remaining messages
+          :while (not (eql data :close-resource))
+          :do
+          (cond
+            ((and client (client-connection-rejected client))
+             #|| ignore any further queued data from this client ||#)
+            ((eql data :connect)
+             (restarts
+              (when (eq :reject (resource-client-connected resource client))
+                (setf (client-connection-rejected client) t)
+                (write-to-client-close client))))
+            ((eql data :eof)
+             (restarts
+              (disconnect-client client))
+             (write-to-client-close client))
+            ((eql data :dropped)
+             (restarts
+              (disconnect-client client))
+             (write-to-client-close client))
+            ((eql data :close-resource)
+             (restarts
+              (disconnect-client client)))
+            ((eql data :custom)
+             ;; here we use the client place to store the custom message
+             (restarts
+              (let ((message client))
+                (restart-case
+                    (resource-received-custom-message resource message)
+                  (continue () :report "Continue"  )))))
+            ((symbolp data)
+             (error "Unknown symbol in read-queue of resource: ~S " data))
+            ((consp data)
+             (restarts
+              (if (eq (car data) :text)
+                  (resource-received-text resource client (cadr data))
+                  (resource-received-binary resource client (cadr data)))))
+            (t
+             (error "got unknown data in run-resource-listener?"))))))
 
 (defun kill-resource-listener (resource)
   "Terminates a RUN-RESOURCE-LISTENER from another thread."

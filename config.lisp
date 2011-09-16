@@ -34,6 +34,13 @@ to be buffered indefinitely though, so be careful with large settings.")
 (defparameter *policy-file* (make-domain-policy :from "*" :to-port "*")
   "cross-domain policy file, used for the Flash WebSocket emulator.")
 
+(defparameter *debug-on-server-errors* nil
+  "set to T to enter debugger on server errors, NIL to just drop the connections.")
+
+(defparameter *debug-on-resource-errors* nil
+  "set to T to enter debugger on resource-handler errors, NIL to drop the connections and try to send a disconnect to handler.")
+
+
 (defparameter *400-message* (babel:string-to-octets
                              "HTTP/1.1 400 Bad Request
 

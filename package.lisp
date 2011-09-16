@@ -24,7 +24,9 @@
    #:client-port
    #:client-host
    #:resource-client-connected
-   #:client-connection-rejected))
+   #:client-connection-rejected
+   #:*debug-on-server-errors*
+   #:*debug-on-resource-errors*))
    
 (in-package :clws)
 
