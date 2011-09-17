@@ -304,24 +304,73 @@ frame is provided, a default close frame will be sent."
                (lambda ()
                  (client-enable-handler client :write t))))))
 
-#++
-(defun write-to-clients (clients string)
-  "Like WRITE-TO-CLIENT but sends the message to all of the clients."
-  ;; fixme: validate type of STRING?
-  (when clients
-    (loop :with msg = (if (stringp string)
-                        (make-frame-from-string string)
-                        string)
-          :for client in clients
-          :do (unless (client-write-closed client)
-                (%client-enqueue-write-or-kill msg client)))
 
-    ;; fixme: handle clients with different server hooks...
-    (let ((hook (%client-server-hook (car clients))))
-      (funcall hook
-               (lambda ()
-                 (loop :for client :in clients
-                       :do (try-write-client client)))))))
+(defun write-to-clients-text (clients message &key frame-size)
+  "Like WRITE-TO-CLIENT-TEXT but sends the message to all of the clients.
+Should be faster than separate calls due to only needing to encode and build
+frames once."
+  (when clients
+    ;; fixme: determine if we actually build frames differently for
+    ;; protocol 7,8,13, and only build them once if not
+    (let* ((versions (loop with v = (make-hash-table)
+                           for c in clients
+                           do (setf (gethash (client-websocket-version c) v) t)
+                           finally (return v)))
+           (hooks (loop with h = (make-hash-table)
+                        for c in clients
+                        do (push c (gethash (%client-server-hook c) h nil))
+                        finally (return h)))
+           (utf8 (if (stringp message)
+                     (babel:string-to-octets message :encoding :utf-8)
+                     message)))
+      ;; possibly should reorder this stuff, so server thread can start
+      ;; sending data while we are building frames for other protocols, or
+      ;; enqueueing data for other clients?
+      (loop for v in (alexandria:hash-table-keys versions)
+            do (setf (gethash v versions)
+                     (text-message-for-protocol
+                      v utf8 :frame-size frame-size)))
+      (loop for c in clients
+            for frames = (gethash (client-websocket-version c) versions)
+            do (loop for frame in frames
+                     do (%client-enqueue-write-or-kill frame c)))
+      (loop for hook being the hash-keys of hooks using (hash-value clients)
+            do (funcall hook
+                        (let ((clients clients))
+                          (lambda ()
+                            (loop :for client :in clients
+                                  :do (try-write-client client)))))))))
+
+(defun write-to-clients-binary (clients message &key frame-size)
+  "Like WRITE-TO-CLIENT-BINARY but sends the message to all of the CLIENTS.
+Should be faster than separate calls due to only needing to encode and build
+frames once."
+  (when clients
+    (let* ((versions (loop with v = (make-hash-table)
+                           for c in clients
+                           do (setf (gethash (client-websocket-version c) v) t)
+                           finally (return v)))
+           (hooks (loop with h = (make-hash-table)
+                        for c in clients
+                        do (push c (gethash (%client-server-hook c) h nil))
+                        finally (return h))))
+      ;; possibly should reorder this stuff, so server thread can start
+      ;; sending data while we are building frames for other protocols, or
+      ;; enqueueing data for other clients?
+      (loop for v in (alexandria:hash-table-keys versions)
+            do (setf (gethash v versions)
+                     (binary-message-for-protocol
+                      v message :frame-size frame-size)))
+      (loop for c in clients
+            for frames = (gethash (client-websocket-version c) versions)
+            do (loop for frame in frames
+                     do (%client-enqueue-write-or-kill frame c)))
+      (loop for hook being the hash-keys of hooks using (hash-value clients)
+            do (funcall hook
+                        (let ((clients clients))
+                          (lambda ()
+                            (loop :for client :in clients
+                                  :do (try-write-client client)))))))))
 
 (defun try-write-client (client)
   "Should only be called on the server thread,
