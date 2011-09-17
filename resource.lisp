@@ -219,6 +219,8 @@ RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
             ((eql data :close-resource)
              (restarts
               (disconnect-client client)))
+            ((eql data :flow-control)
+             (%write-to-client client :enable-read))
             ((eql data :custom)
              ;; here we use the client place to store the custom message
              (restarts

@@ -26,7 +26,7 @@ to be buffered indefinitely though, so be careful with large settings.")
   "Default max header size in octets (not used yet?)")
 
 ;; fixme: should this have a separate setting for when to reenable readers?
-(defparameter *max-handler-read-backlog* 256
+(defparameter *max-handler-read-backlog* 4
   "Max number of frames that can be queued before the reader will
  start throttling reads for clients using that queue (for now, just
  drops the connections...).")

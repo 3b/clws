@@ -89,12 +89,14 @@
   (iolib.multiplex::fd-has-error-handler-p (server-event-base (client-server client))
                                            (socket-os-fd (client-socket client))))
 
+(deftype client-write-control-keyword () '(member :close :enable-read))
+
 (defun special-client-write-value-p (value)
   "Certain values, like :close and :enable-read, are special symbols
 that may be passed to WRITE-TO-CLIENT or otherwise enqueued on the
 client's write queue.  This predicate returns T if value is one of
 those special values"
-  (member value '(:close :enable-read)))
+  (typep value 'client-write-control-keyword))
 
 (defgeneric client-enable-handler (client &key read write error)
   (:documentation "Enables the read, write, or error handler for a a
@@ -294,6 +296,8 @@ frame is provided, a default close frame will be sent."
                                               client))
            (setf (client-connection-state client) :closing))
          (%client-enqueue-write-or-kill :close client))
+        (client-write-control-keyword
+         (%client-enqueue-write-or-kill octets-or-keyword client))
         ((vector (unsigned-byte 8))
          (%client-enqueue-write-or-kill octets-or-keyword client)))
       (funcall hook
