@@ -8,24 +8,32 @@
 <html><head>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
   <title>Sample of web_socket.js</title>
-  
+   
   <!-- Include these three JS files: -->
   <script type="text/javascript" src="/wsjs/swfobject.js"></script>
-  <script type="text/javascript" src="/wsjs/FABridge.js"></script>
   <script type="text/javascript" src="/wsjs/web_socket.js"></script>
 
   <script type="text/javascript">
     
     // Set URL of your WebSocketMain.swf here:
-    WebSocket.__swfLocation = "/wsjs/WebSocketMain.swf";
-
+    WEB_SOCKET_SWF_LOCATION = "/wsjs/WebSocketMain.swf";
+    
     var ws;
     var count = 0;
+    var query = window.location.search.toString();
+    query = query !== '' && query.charAt(0) == '?' && query.substring(1).split('&');
+    WEB_SOCKET_FORCE_FLASH = query && 0 <= query.indexOf('force-flash'); //>
     function init() {
-
-      // Connect to Web Socket.
-      // Change host/port here to your own Web Socket server.
+    
+    // Connect to Web Socket.
+    // Change host/port here to your own Web Socket server.
+    if ((typeof MozWebSocket != 'undefined') && (! WEB_SOCKET_FORCE_FLASH)) {
+    ws = new MozWebSocket("ws://127.0.0.1:12345/chat");
+    } else {
       ws = new WebSocket("ws://127.0.0.1:12345/chat");
+    }
+      // ask for binary messages as arraybuffers instead of blobs
+      ws.binaryType = "arraybuffer";
 
       // Set event handlers.
       ws.onopen = function() {
@@ -33,11 +41,22 @@
       };
       ws.onmessage = function(e) {
         // e.data contains received string.
-        output("onmessage: " + e.data);
+        if (typeof e.data === "string") {
+          output("1onmessage: " + e.data);
+        } else {
+          var a = [];
+          var b = new Uint32Array(e.data);
+          for (var i = 0; i < b.length; ++i) {
+            a[i] = b[i];
+          }
+        output("onmessage/binary: " + e.data + " = " + a);
+
+        }
       };
-      ws.onclose = function() {
-        output("onclose");
+      ws.onclose = function(e) {
+        output("onclose (" + e.code + "/" + e.reason+")" );
       };
+
 
     }
     
@@ -50,9 +69,23 @@
       input.focus();
     }
     
-    function onCloseClick() {
-      ws.close();
+    function onBinaryClick() {
+      var input = document.getElementById("input");
+      var bin = new ArrayBuffer(32);
+      var b32 = new Int32Array(bin);
+      b32[0] = 1;
+      b32[1] = 2;
+      b32[2] = 3;
+      b32[3] = 4;
+      b32[4] = 5;
+      b32[5] = 6;
+      b32[6] = 7;
+      b32[7] = 8;
+      ws.send(bin);
+      output("send: " + bin);
+      input.focus();
     }
+
     
     function output(str) {
       var log = document.getElementById("log");
@@ -67,6 +100,7 @@
   <form onsubmit="onSubmit(); return false;">
     <input type="text" id="input">
     <input type="submit" value="Send">
+    <button onclick="onBinaryClick(); return false;">Send Binary</button>
     <button onclick="onCloseClick(); return false;">close</button>
   </form>
   <div id="log"></div>

@@ -11,22 +11,24 @@
 
   <!-- Include these three JS files: -->
   <script type="text/javascript" src="/wsjs/swfobject.js"></script>
-  <script type="text/javascript" src="/wsjs/FABridge.js"></script>
   <script type="text/javascript" src="/wsjs/web_socket.js"></script>
 
   <script type="text/javascript">
 
     // Set URL of your WebSocketMain.swf here:
-    WebSocket.__swfLocation = "/wsjs/WebSocketMain.swf";
+   // aWebSocket.__swfLocation = "/wsjs/WebSocketMain.swf";
+    WEB_SOCKET_SWF_LOCATION = "/wsjs/WebSocketMain.swf";
+    WEB_SOCKET_FORCE_FLASH = true;
 
     var ws;
     var count = 0;
     function init() {
-
       // Connect to Web Socket.
       // Change host/port here to your own Web Socket server.
 
-      ws = new ((typeof MozWebSocket)!="undefined"?MozWebSocket: WebSocket)("ws://127.0.0.1:12345/echo?query-test");
+//      ws = new ((typeof MozWebSocket)!="undefined"?MozWebSocket: WebSocket)("ws://127.0.0.1:12345/echo?query-test");
+      ws = new ((typeof MozWebSocket)!="undefined"?MozWebSocket: WebSocket)("wss://127.0.0.1:12346/echo?query-test");
+//      ws = new WebSocket("ws://192.168.0.100:12345/echo?query-test");
 
       // ask for binary messages as arraybuffers instead of blobs
       ws.binaryType = "arraybuffer";
