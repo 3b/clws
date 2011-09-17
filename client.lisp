@@ -404,7 +404,7 @@ non-blocking fashion."
        (mailbox-send-message (client-write-queue client) frame))
       ((> (mailbox-count (client-write-queue client))
           *max-write-backlog*)
-       (lg "client write backlog = ~s, killing conectiom~%"
+       (lg "client write backlog = ~s, killing connection~%"
            (mailbox-count (client-write-queue client)))
        (funcall (%client-server-hook client)
                 (lambda ()

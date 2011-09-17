@@ -1,6 +1,5 @@
 (in-package #:ws)
 
-
 ;;; chunks stored by chunk-buffer class
 (defclass buffer-chunk ()
   ((vector :reader buffer-vector :initarg :vector)
@@ -26,7 +25,7 @@
 ;;;   convert (as utf8) to string
 ;;;   call thunk with contents as (binary or text) stream?
 ;;;    -- or maybe return a stream once it is implemented directly
-;;;       as a gray stream rather than a pike of concatenated
+;;;       as a gray stream rather than a pile of concatenated
 ;;l       and flexi-streams?
 ;;;   ? map over octets/characters?
 ;;; todo: versions of octet-vector and string that don't clear buffer?
@@ -99,8 +98,6 @@
   (let ((streams nil))
     (unwind-protect
          (progn
-           ;; chunks are stored in reverse order, so build list of streams
-           ;; in opposite order
            (setf streams
                  (loop for i in (%get-chunks buffer)
                        while i
@@ -298,13 +295,12 @@
                                        (setf start match)
                                        (funcall (callback buffer) buffer))
                                   while (and (not failed) match (>= end start)))
-                            ;; todo: if we used up all the data that was read, dump
-                            ;; the buffer in a pool or something so we don't hold
-                            ;; a buffer in ram for each client while waiting for
+                            ;; todo: if we used up all the data that
+                            ;; was read, dump the buffer in a pool or
+                            ;; something so we don't hold a buffer in
+                            ;; ram for each client while waiting for
                             ;; data
-                            (setf (partial-vector-pos buffer) end))
-
-                          ))
+                            (setf (partial-vector-pos buffer) end))))
                     ;; protocol errors
                     (fail-the-websockets-connection (e)
                       (when (eq (client-connection-state client) :connected)
