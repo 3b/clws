@@ -33,6 +33,9 @@ and secondary value."
 #+sbcl
 (defstruct atomic-place
   (val 0 :type (unsigned-byte #+x86-64 64 #+x86 32)))
+#+ccl
+(defun make-atomic-place (&key val)
+  val)
 
 (defun make-mailbox (&key name initial-contents)
   "Returns a new MAILBOX with messages in INITIAL-CONTENTS enqueued."  
