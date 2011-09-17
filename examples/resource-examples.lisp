@@ -111,7 +111,7 @@
     (write-to-clients-text (clients res)
                            (format nil "chat: ~s.~s : |~s|"
                                    (client-host client)
-                                   1(client-port client)
+                                   (client-port client)
                                    message))))
 
 (defmethod resource-received-binary ((res chat-server) client message)
