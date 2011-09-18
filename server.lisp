@@ -34,7 +34,9 @@ connections and has a bunch of client instances that it controls."))
            (client (when client-socket
                      (make-instance 'client
                                     :server server
-                                    :host (remote-host client-socket)
+                                    :%host (remote-host client-socket)
+                                    :host (address-to-string
+                                           (remote-host client-socket))
                                     :port (remote-port client-socket)
                                     :server-hook server-hook
                                     :socket client-socket))))

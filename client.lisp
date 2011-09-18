@@ -11,7 +11,10 @@
              :documentation "The resource object the client has
              requested-- Not the string, but the object.")
    (port :initarg :port :reader client-port)
+   ;; host address as a string
    (host :initarg :host :reader client-host)
+   ;; internal version, in some unspecified format
+   (%host :initarg :%host :reader %client-host)
    (server-hook :initarg :server-hook :reader %client-server-hook
                 :documentation "Function to call to send a command to
                 the network thread from other threads")
