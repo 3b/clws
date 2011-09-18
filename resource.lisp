@@ -201,6 +201,21 @@ RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
           :while (not (eql data :close-resource))
           :do
           (cond
+            ((eql data :custom)
+             ;; here we use the client place to store the custom message
+             (handler-bind
+                 ((error
+                    (lambda (c)
+                      (cond
+                        (*debug-on-resource-errors*
+                         (invoke-debugger c))
+                        (t
+                         (lg "resource handler error ~s in custom, ignoring~%" c)
+                         (invoke-restart 'continue))))))
+              (let ((message client))
+                (restart-case
+                    (resource-received-custom-message resource message)
+                  (continue () :report "Continue"  )))))
             ((and client (client-connection-rejected client))
              #|| ignore any further queued data from this client ||#)
             ((eql data :connect)
@@ -221,13 +236,6 @@ RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
               (disconnect-client client)))
             ((eql data :flow-control)
              (%write-to-client client :enable-read))
-            ((eql data :custom)
-             ;; here we use the client place to store the custom message
-             (restarts
-              (let ((message client))
-                (restart-case
-                    (resource-received-custom-message resource message)
-                  (continue () :report "Continue"  )))))
             ((symbolp data)
              (error "Unknown symbol in read-queue of resource: ~S " data))
             ((consp data)
