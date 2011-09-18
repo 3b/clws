@@ -67,18 +67,19 @@ Test this with the example provided in the above document:
                                                (resource-read-queue resource)
                                                (make-mailbox))
                 (client-resource client) resource)
-          (client-enqueue-read client (list client :connect)))
-        (%write-to-client client
-                          (babel:string-to-octets
-                           ;; todo: Sec-WebSocket-Protocol, Sec-WebSocket-Extension
-                           (format nil "HTTP/1.1 101 Switching Protocols
+          (%write-to-client client
+                            (babel:string-to-octets
+                             ;; todo: Sec-WebSocket-Protocol, Sec-WebSocket-Extension
+                             (format nil "HTTP/1.1 101 Switching Protocols
 Upgrade: websocket
 Connection: Upgrade
 Sec-WebSocket-Accept: ~a
 
 "
-                                   (make-challenge-o7 key))
-                           :encoding :iso-8859-1)))
+                                     (make-challenge-o7 key))
+                             :encoding :iso-8859-1))
+          (setf (client-connection-state client) :connected)
+          (client-enqueue-read client (list client :connect))))
       t)))
 
 

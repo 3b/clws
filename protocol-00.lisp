@@ -83,54 +83,57 @@ client."
    client
    (octet-count-matcher 8)
    (lambda (client)
-     (let ((nonce (get-octet-vector (chunks client)))
-           (headers (client-connection-headers client))
-           (resource-name (client-resource-name client)))
-       (destructuring-bind (resource check-origin)
-           (valid-resource-p (client-server client) resource-name)
-         (unless resource
-           (error-exit *404-message*))
-         (unless (funcall check-origin (gethash :origin headers))
-           (error-exit *403-message*))
-
-         (multiple-value-bind  (acceptp rqueue origin handshake-resource protocol)
-             (resource-accept-connection resource resource-name
-                                         headers
-                                         client)
-           (declare (ignorable origin handshake-resource protocol))
-           (when (not acceptp)
+     (flet ((error-exit (message)
+              (send-error-and-close client message)
+              (return-from protocol-76/00-nonce nil)))
+       (let ((nonce (get-octet-vector (chunks client)))
+             (headers (client-connection-headers client))
+             (resource-name (client-resource-name client)))
+         (destructuring-bind (resource check-origin)
+             (valid-resource-p (client-server client) resource-name)
+           (unless resource
+             (error-exit *404-message*))
+           (unless (funcall check-origin (gethash :origin headers))
              (error-exit *403-message*))
-           (setf (client-read-queue client) (or rqueue
-                                                (resource-read-queue resource)
-                                                (make-mailbox))
-                 (client-resource client) resource
-                 (client-websocket-version client) 0)
-           (client-enqueue-read client (list client :connect))
 
-           (client-enqueue-write
-            client
-            (make-handshake-76 (or origin
-                                   (gethash :origin headers)
-                                   "http://127.0.0.1/")
-                               (let ((*print-pretty*))
-                                 (format nil "~a~a~a"
-                                         "ws://"
-                                         (or (gethash :host headers)
-                                             "127.0.0.1:12345")
-                                         (or handshake-resource
-                                             resource-name)))
-                               (or protocol
-                                   (gethash :websocket-protocol headers)
-                                   "test")))
-           (client-enqueue-write
-            client
-            (ironclad:digest-sequence
-             'ironclad:md5
-             (make-challenge-00
-              (extract-key (gethash :sec-websocket-key1 headers))
-              (extract-key (gethash :sec-websocket-key2 headers))
-              nonce))))
-         (protocol-76/00-frame-start client))))))
+           (multiple-value-bind  (acceptp rqueue origin handshake-resource protocol)
+               (resource-accept-connection resource resource-name
+                                           headers
+                                           client)
+             (declare (ignorable origin handshake-resource protocol))
+             (when (not acceptp)
+               (error-exit *403-message*))
+             (setf (client-read-queue client) (or rqueue
+                                                  (resource-read-queue resource)
+                                                  (make-mailbox))
+                   (client-resource client) resource
+                   (client-websocket-version client) 0)
+             (client-enqueue-write
+              client
+              (make-handshake-76 (or origin
+                                     (gethash :origin headers)
+                                     "http://127.0.0.1/")
+                                 (let ((*print-pretty*))
+                                   (format nil "~a~a~a"
+                                           "ws://"
+                                           (or (gethash :host headers)
+                                               "127.0.0.1:12345")
+                                           (or handshake-resource
+                                               resource-name)))
+                                 (or protocol
+                                     (gethash :websocket-protocol headers)
+                                     "test")))
+             (client-enqueue-write
+              client
+              (ironclad:digest-sequence
+               'ironclad:md5
+               (make-challenge-00
+                (extract-key (gethash :sec-websocket-key1 headers))
+                (extract-key (gethash :sec-websocket-key2 headers))
+                nonce)))
+             (setf (client-connection-state client) :connected)
+             (client-enqueue-read client (list client :connect)))
+           (protocol-76/00-frame-start client)))))))
 
 (defun protocol-76/00-read-text-frame (client)
   (next-reader-state
