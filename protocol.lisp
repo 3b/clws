@@ -188,7 +188,7 @@ Sec-WebSocket-Version: ~{~s~^, ~}
             (gethash :sec-websocket-key1 headers)
             (gethash :sec-websocket-key2 headers))
        ;; protocol 76/00
-       (if *protosol-76/00-support*
+       (if *protocol-76/00-support*
            (protocol-76/00-nonce client)
            (unsupported-protocol-version client)))
       (version

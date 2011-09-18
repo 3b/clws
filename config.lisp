@@ -2,7 +2,7 @@
 
 ;;; some of these should probably be per resource handler rather than global?
 
-(defparameter *protosol-76/00-support* nil
+(defparameter *protocol-76/00-support* nil
   "set to NIL to disable draft-hixie-76/draft-ietf-00 support, true to enable.")
 
 (defparameter *max-clients* 256
