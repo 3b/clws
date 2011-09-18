@@ -23,7 +23,7 @@ Doesn't currently support `wss:` (TLS/SSL) connections, but proxying behind [stu
 
 First, set up a package:
 
-```
+```lisp
 (defpackage #:clws-echo
   (:use :cl :clws))
 
@@ -33,7 +33,7 @@ First, set up a package:
 
 Then we can start the websockets server, here we use port 12345:
 
-```
+```lisp
 (bordeaux-threads:make-thread (lambda ()
                                 (run-server 12345))
                               :name "websockets server")
@@ -41,7 +41,7 @@ Then we can start the websockets server, here we use port 12345:
 
 Next we need to define a 'resource', which we will call `/echo` (so we will connect with URIs like `ws://localhost/echo`). To do that, we subclass `ws-resource` and specialize a few generic functions on that class:
 
-```
+```lisp
 (defclass echo-resource (ws-resource)
   ())
 
@@ -63,7 +63,7 @@ Next we need to define a 'resource', which we will call `/echo` (so we will conn
 
 Finally, we register the resource with the server, and start a thread to handle messages for that resource:
 
-```
+```lisp
 (register-global-resource "/echo"
                           (make-instance 'echo-resource)
                           (origin-prefix "http://127.0.0.1" "http://localhost"))
