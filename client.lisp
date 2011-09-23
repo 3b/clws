@@ -211,7 +211,7 @@ if both sides shutdown"))
       (resource-client-disconnected resource client)
       (setf (client-resource client) nil)
       (unless (client-write-closed client)
-        (write-to-client client :close))))
+        (%write-to-client client :close))))
 
   ;; not sure if this actually needs to be separate from previous
   ;; check, need to figure out whether there can actually still be
