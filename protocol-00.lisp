@@ -61,7 +61,6 @@ client."
       :do (setf n (+ (* n 10) (digit-char-p i)))
       :finally (return
                  (multiple-value-bind (d r) (floor n spaces)
-                   #++(Format t "got key = ~s -> ~s (~s)~%" n d r)
                    (when (zerop r)
                      d))))))
 ;; (extract-key "3e6b263  4 17 80") -> 906585445
@@ -74,7 +73,6 @@ client."
        do (setf (aref b i) (ldb (byte 8 j) k1))
        do (setf (aref b (+ 4 i)) (ldb (byte 8 j) k2)))
     (replace b k3 :start1 8 :end1 16 )
-    (format t "made challenge  (~{0x~2,'0x ~}) ~%" (coerce b 'list))
     b))
 
 
@@ -141,7 +139,6 @@ client."
    (octet-pattern-matcher #(#xff) *max-read-message-size*)
    (lambda (client)
      (let ((s (get-utf8-string-or-fail (chunks client) :skip-octets-end 1)))
-     (format t "got frame ~s~%" s)
        (client-enqueue-read client (list client (list :text s)))
        (protocol-76/00-frame-start client)))))
 
@@ -162,15 +159,14 @@ client."
    (octet-count-matcher 1)
    (lambda (client)
      (let ((frame-type (read-octet (chunks client))))
-       (format t "got 76/00 frame ~s~%" frame-type)
-      (cond
-        ((eql frame-type #x00)
-         (setf (message-opcode client) frame-type)0
-         (protocol-76/00-read-text-frame client))
-        ((eql frame-type #xff)
-         (setf (message-opcode client) frame-type)
-         (protocol-76/00-read-binary-frame client))
-        (t
-         ;; unused message, just for debugging
-         (error 'fail-the-websockets-connection
-                :message (format nil "unknown frame type #x~2,'0x" frame-type))))))))
+       (cond
+         ((eql frame-type #x00)
+          (setf (message-opcode client) frame-type)0
+          (protocol-76/00-read-text-frame client))
+         ((eql frame-type #xff)
+          (setf (message-opcode client) frame-type)
+          (protocol-76/00-read-binary-frame client))
+         (t
+          ;; unused message, just for debugging
+          (error 'fail-the-websockets-connection
+                 :message (format nil "unknown frame type #x~2,'0x" frame-type))))))))

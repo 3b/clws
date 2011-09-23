@@ -117,10 +117,10 @@ handshake coming in from the client."))
                  (not (client-writer-active client))
                  (not (client-write-closed client)))
         (try-write-client client))
-      (when read (format t "enable read ~s ~s ~s~%"
-                         fd
-                         (client-reader-active client)
-                         (client-read-closed client)))
+      (when read (lg "enable read ~s ~s ~s~%"
+                     fd
+                     (client-reader-active client)
+                     (client-read-closed client)))
       (when (and read
                  (not (client-reader-active client))
                  (not (client-read-closed client)))
@@ -168,14 +168,14 @@ if both sides shutdown"))
                  `(handler-case
                       (progn ,@body)
                     (socket-not-connected-error ()
-                      (format t "enotconn ~s ~s ~s~%" ,(format nil "~s" body)
-                              (client-port client) fd)
+                      (lg "enotconn ~s ~s ~s~%" ,(format nil "~s" body)
+                          (client-port client) fd)
                       nil)
                     (isys:epipe ()
-                      (format t "epipe in disconnect~%")
+                      (lg "epipe in disconnect~%")
                       nil)
                     (isys:enotconn ()
-                      (format t "enotconn in shutdown/close?")
+                      (lg "enotconn in shutdown/close?")
                       nil))))
       (let* ((socket (client-socket client))
              (fd (socket-os-fd socket)))

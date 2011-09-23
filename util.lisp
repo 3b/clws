@@ -15,5 +15,6 @@ http://www.adobe.com/devnet/articles/crossdomain_policy_file_spec.html"
    :encoding :ascii))
 
 (defun lg (&rest args)
-  (apply #'format t args)
-  (finish-output))
+  (when *log-level*
+    (apply #'format t args)
+    (finish-output)))

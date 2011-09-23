@@ -107,8 +107,7 @@ Sec-WebSocket-Version: ~{~s~^, ~}
                       ;; fixme: spec says "HTTP/1.1 or higher"
                       ;; ignoring that possibilty for now..
                       (string= " HTTP/1.1" request-line :start2 s2))
-           (format t "got bad request line? ~s~%"
-                   request-line)
+           (lg "got bad request line? ~s~%" request-line)
            (return-from resource-line-callback
              (invalid-header buffer)))
          (let* ((uri (subseq request-line (1+ s1) s2))
@@ -131,7 +130,7 @@ Sec-WebSocket-Version: ~{~s~^, ~}
              (return-from resource-line-callback
                (invalid-header buffer)))
            ;; fixme: decode %xx junk in url/query string?
-           (format t "got request line ~s ? ~s~%" resource-name query)
+           (lg "got request line ~s ? ~s~%" resource-name query)
            (setf (client-resource-name buffer) resource-name)
            (setf (client-query-string buffer) query))))
      (match-headers buffer))))
@@ -150,10 +149,10 @@ Sec-WebSocket-Version: ~{~s~^, ~}
    (alexandria:named-lambda policy-file-callback (buffer)
      (let ((request (get-octet-vector (chunks buffer))))
        (unless (and request (equalp request *policy-file-request*))
-         (format t "broken policy file request?~%")
+         (lg "broken policy file request?~%")
          (return-from policy-file-callback
            (invalid-header buffer)))
-       (format t "send policy file~%")
+       (lg "send policy file~%")
        (client-enqueue-write buffer *policy-file*)
        #++(%write-to-client buffer :close)
        #++(babel:octets-to-string *policy-file* :encoding :ascii)
@@ -197,8 +196,8 @@ Sec-WebSocket-Version: ~{~s~^, ~}
                     client)
            (unsupported-protocol-version client)))
       (t
-       (format t "couldn't detect version? headers=~s~%"
-               (alexandria:hash-table-alist headers))
+       (lg "couldn't detect version? headers=~s~%"
+           (alexandria:hash-table-alist headers))
        (invalid-header client)))))
 
 

@@ -43,7 +43,7 @@
    #:any-origin
    #:origin-exact
 
-))
+#:*log-level*))
    
 (in-package :clws)
 

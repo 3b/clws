@@ -130,7 +130,7 @@ are thread-safe.
                )
           (loop :for v :in (server-list-clients server)
                 :do
-                (format t "cleanup up dropping client ~s~%" v)
+                (lg "cleanup up dropping client ~s~%" v)
                 (client-enqueue-read v (list v :dropped))
                 (client-disconnect v :abort t))
           (close control-socket-1)

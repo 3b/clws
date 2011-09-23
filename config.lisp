@@ -34,6 +34,10 @@ to be buffered indefinitely though, so be careful with large settings.")
 (defparameter *policy-file* (make-domain-policy :from "*" :to-port "*")
   "cross-domain policy file, used for the Flash WebSocket emulator.")
 
+(defparameter *log-level* nil
+  ;; todo: intermediate settings
+  "set to NIL to disable log messages, T to enable")
+
 (defparameter *debug-on-server-errors* nil
   "set to T to enter debugger on server errors, NIL to just drop the connections.")
 
