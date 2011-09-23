@@ -94,6 +94,7 @@ message could be received."
 (defun mailbox-list-messages (mailbox)
   "Returns a fresh list containing all the messages in the
 mailbox. Does not remove messages from the mailbox."
+  (declare (ignore mailbox))
   (error "not implemented"))
 
 (defun mailbox-receive-pending-messages (mailbox &optional n)

@@ -142,9 +142,11 @@ ignore any already received data from this client."))
   with the second argument of this function."))
 
 (defmethod resource-accept-connection (res resource-name headers client)
+  (declare (ignore res resource-name headers client))
   t)
 
 (defmethod resource-client-connected (res client)
+  (declare (ignore res client))
   nil)
 
 (defmethod send-custom-message-to-resource (resource message)
@@ -157,6 +159,7 @@ ignore any already received data from this client."))
   function on the main resource thread."))
 
 (defmethod resource-received-custom-message (resource (message funcall-custom-message))
+  (declare (ignore resource))
   (funcall (message-function message)))
 
 (defgeneric call-on-resource-thread (resource fn)
