@@ -29,13 +29,14 @@
                (:file "client")
                (:file "resource")
                (:file "server"))
-  :description "CLWS implement the WebSockets protocol as described by
-the latest specification draft[1] (as well as some older drafts
-implemented by recent browsers [2][3][4]).  Only a WebSockets server
-implementation is provided.
+  :description "CLWS implement the WebSocket Protocol as described by
+RFC6455[1] (as well as some older drafts implemented by recent
+browsers [2][3][4][5]).  Only a WebSockets server implementation is
+provided.
 
-[1] http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-14
-[2] http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-08
-[3] http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-07
-[4] http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-00")
+[1]http://tools.ietf.org/html/rfc6455
+[2] http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-17
+[3] http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-08
+[4] http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-07
+[5] http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-00")
 
