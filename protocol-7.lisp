@@ -252,9 +252,13 @@ Sec-WebSocket-Accept: ~a
               (opcode (ldb (byte 4 0) opcode-octet))
               (masked (logbitp 7 length-octet))
               (length (ldb (byte 7 0) length-octet)))
-         ;; TODO: make sure we have partial message
-         ;;   iff opcode=0
-         ;; TODO: make sure MASK is set for client->server frames
+         ;; TODO: move checks for continuation frames without start frame
+         ;; here from dispatch-frame so we don't need to buffer data we
+         ;; are just going to dump anyway
+         (when (zerop mask)
+           (error 'fail-the-websockets-connection
+                  :status-code 1002
+                  :message (format nil "client frames not masked")))
          (unless (zerop rsv)
            (error 'fail-the-websockets-connection
                   :status-code 1002
