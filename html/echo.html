@@ -26,8 +26,8 @@
       // Connect to Web Socket.
       // Change host/port here to your own Web Socket server.
 
-//      ws = new ((typeof MozWebSocket)!="undefined"?MozWebSocket: WebSocket)("ws://127.0.0.1:12345/echo?query-test");
-      ws = new ((typeof MozWebSocket)!="undefined"?MozWebSocket: WebSocket)("wss://127.0.0.1:12346/echo?query-test");
+      ws = new ((typeof MozWebSocket)!="undefined"?MozWebSocket: WebSocket)("ws://127.0.0.1:12345/echo?query-test");
+//      ws = new ((typeof MozWebSocket)!="undefined"?MozWebSocket: WebSocket)("wss://127.0.0.1:12346/echo?query-test");
 //      ws = new WebSocket("ws://192.168.0.100:12345/echo?query-test");
 
       // ask for binary messages as arraybuffers instead of blobs

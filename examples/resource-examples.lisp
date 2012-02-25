@@ -9,7 +9,7 @@
 (register-global-resource
  "/echo"
  (make-instance 'echo-resource)
- (ws::origin-prefix "http://127.0.0.1" "http://localhost"))
+ (ws::origin-prefix "http://127.0.0.1" "http://localhost" "null"))
 
 #++
 (defmethod resource-accept-connection ((res echo-resource) resource-name headers client)
