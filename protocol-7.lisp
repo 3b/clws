@@ -255,7 +255,7 @@ Sec-WebSocket-Accept: ~a
          ;; TODO: move checks for continuation frames without start frame
          ;; here from dispatch-frame so we don't need to buffer data we
          ;; are just going to dump anyway
-         (when (zerop mask)
+         (unless masked
            (error 'fail-the-websockets-connection
                   :status-code 1002
                   :message (format nil "client frames not masked")))
