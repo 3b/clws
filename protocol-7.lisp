@@ -77,9 +77,7 @@ Sec-WebSocket-Accept: ~a
 
 "
                                      (make-challenge-o7 key))
-                             :encoding :iso-8859-1))
-          (setf (client-connection-state client) :connected)
-          (client-enqueue-read client (list client :connect))))
+                             :encoding :iso-8859-1))))
       t)))
 
 
@@ -282,16 +280,22 @@ Sec-WebSocket-Accept: ~a
 (defun protocol-7-parse-headers (client)
   (when (protocol-7+-handshake client "7" :sec-websocket-origin)
     (setf (client-websocket-version client) 7)
+    (setf (client-connection-state client) :connected)
+    (client-enqueue-read client (list client :connect))
     (protocol-7+-start-frame client)))
 
 (defun protocol-8-parse-headers (client)
   (when (protocol-7+-handshake client "8" :sec-websocket-origin)
     (setf (client-websocket-version client) 8)
+    (setf (client-connection-state client) :connected)
+    (client-enqueue-read client (list client :connect))
     (protocol-7+-start-frame client)))
 
 (defun protocol-13-parse-headers (client)
   (when (protocol-7+-handshake client "13" :origin)
     (setf (client-websocket-version client) 8)
+    (setf (client-connection-state client) :connected)
+    (client-enqueue-read client (list client :connect))
     (protocol-7+-start-frame client)))
 
 (setf (gethash "7" *protocol-header-parsers*) 'protocol-7-parse-headers
