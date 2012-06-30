@@ -7,7 +7,7 @@
           (split-sequence:split-sequence #\. (lisp-implementation-version))
         (declare (ignore r))
         (and (string= maj "1") (string= min "0")
-             (and point (<= 37 (parse-integer point) 42))))
+             (and point (<= 37 (parse-integer point :junk-allowed t) 42))))
 ;;; break up links when removing nodes to avoid problems with conservative
 ;;; GC in long-lived queues
 (defun dequeue (queue)
