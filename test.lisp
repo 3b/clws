@@ -11,7 +11,7 @@
 
 (defun handshake (resource)
    (let ((crlf (format nil "~c~c" (code-char 13) (code-char 10))))
-     (babel:string-to-octets
+     (string-to-shareable-octets
       (print (format nil "GET ~a HTTP/1.1~a~
 Upgrade: WebSocket~a~
 Connection: Upgrade~a~
@@ -29,7 +29,7 @@ WebSocket-Protocol: ~a~a~
 
 (defun handshake-76 (resource)
    (let ((crlf (format nil "~c~c" (code-char 13) (code-char 10))))
-     (babel:string-to-octets
+     (string-to-shareable-octets
       (print (format nil "GET ~a HTTP/1.1~a~
 Upgrade: WebSocket~a~
 Connection: Upgrade~a~

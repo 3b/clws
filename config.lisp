@@ -45,18 +45,18 @@ to be buffered indefinitely though, so be careful with large settings.")
   "set to T to enter debugger on resource-handler errors, NIL to drop the connections and try to send a disconnect to handler.")
 
 
-(defvar *400-message* (babel:string-to-octets
+(defvar *400-message* (string-to-shareable-octets
                              "HTTP/1.1 400 Bad Request
 
 "
                              :encoding :utf-8))
 
-(defvar *403-message* (babel:string-to-octets
+(defvar *403-message* (string-to-shareable-octets
                              "HTTP/1.1 403 Forbidden
 
 "
                              :encoding :utf-8))
-(defvar *404-message* (babel:string-to-octets
+(defvar *404-message* (string-to-shareable-octets
                              "HTTP/1.1 404 Resource not found
 
 "

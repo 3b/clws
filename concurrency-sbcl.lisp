@@ -26,7 +26,7 @@ and secondary value."
 ;;;;  Thread safe queue with ability to do blocking reads
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defun make-mailbox (&key name initial-contents)
-  "Returns a new MAILBOX with messages in INITIAL-CONTENTS enqueued."  
+  "Returns a new MAILBOX with messages in INITIAL-CONTENTS enqueued."
   #+sbcl
   (sb-concurrency:make-mailbox :name name :initial-contents initial-contents))
 
