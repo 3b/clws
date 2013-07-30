@@ -68,7 +68,7 @@ Test this with the example provided in the above document:
                                                (make-mailbox))
                 (client-resource client) resource)
           (%write-to-client client
-                            (babel:string-to-octets
+                            (string-to-shareable-octets
                              ;; todo: Sec-WebSocket-Protocol, Sec-WebSocket-Extension
                              (format nil "HTTP/1.1 101 Switching Protocols
 Upgrade: websocket
@@ -215,8 +215,7 @@ Sec-WebSocket-Accept: ~a
    (octet-count-matcher 4)
    (lambda (client)
      (with-buffer-as-stream (client s)
-       (let ((mask (make-array 4 :element-type '(unsigned-byte 8)
-                                 :initial-element 0)))
+       (let ((mask (make-array-ubyte8 4 :initial-element 0)))
          (loop for i below 4
                do (setf (aref mask i) (read-byte s)))
          (protocol-7+-read-frame client length mask))))))
@@ -305,3 +304,4 @@ Sec-WebSocket-Accept: ~a
 (push 7 *supported-protocol-versions*)
 (push 8 *supported-protocol-versions*)
 (push 13 *supported-protocol-versions*)
+
