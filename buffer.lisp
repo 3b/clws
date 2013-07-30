@@ -116,8 +116,7 @@
 
 (defmethod get-octet-vector ((cb chunk-buffer))
   (let* ((size (buffer-size cb))
-         (vector (make-array size :element-type '(unsigned-byte 8)
-                                  :initial-element 0))
+         (vector (make-array-ubyte8 size :initial-element 0))
          (chunks (%get-chunks cb)))
     (loop for c in chunks
           for offset = 0 then (+ offset size)
@@ -141,9 +140,7 @@
   ;;  (or maybe just implement our own converter since we only need utf8?))
   (let* ((size (buffer-size cb))
          (end (or octet-end size))
-         (vector (make-array end
-                             :element-type '(unsigned-byte 8)
-                             :initial-element 0))
+         (vector (make-array-ubyte8 end :initial-element 0))
          (chunks (%get-chunks cb)))
     (loop for c in chunks
           for offset = 0 then (+ offset size)
@@ -181,12 +178,12 @@
 #++
 (flet ((test-buf ()
          (let ((foo (make-instance 'chunk-buffer))
-               (buf (babel:string-to-octets "_<continued-test>_")))
-           (add-chunk foo (babel:string-to-octets "TEST" ) 0 4)
-           (add-chunk foo (babel:string-to-octets "test2") 0 5)
+               (buf (string-to-shareable-octets "_<continued-test>_")))
+           (add-chunk foo (string-to-shareable-octets "TEST" ) 0 4)
+           (add-chunk foo (string-to-shareable-octets "test2") 0 5)
            (add-chunk foo buf 1 5)
            (add-chunk foo buf 5 (1- (length buf)))
-           (add-chunk foo (babel:string-to-octets "..test3") 2 7)
+           (add-chunk foo (string-to-shareable-octets "..test3") 2 7)
            foo)))
   (list
    (with-buffer-as-stream ((test-buf) s)
@@ -271,7 +268,7 @@
                                   (> (partial-vector-pos buffer)
                                      (- (length (partial-vector buffer)) 16)))
                           (setf (partial-vector buffer)
-                                (make-array 2048 :element-type '(unsigned-byte 8))
+                                (make-array-ubyte8 2048)
                                 (partial-vector-pos buffer) 0))
                         (multiple-value-bind (_octets count)
                             ;; fixme: decide on good max read chunk size

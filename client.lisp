@@ -269,11 +269,10 @@ be sent to the client."
 as a WebSockets frame."
   (concatenate '(vector (unsigned-byte 8))
                '(0)
-               (babel:string-to-octets string :encoding :utf-8)
+               (string-to-shareable-octets string :encoding :utf-8)
                '(#xff)))
 
-(defparameter *close-frame* (make-array 2 :element-type '(unsigned-byte 8)
-                                          :initial-contents '(#xff #x00)))
+(defparameter *close-frame* (make-array-ubyte8 2 :initial-contents '(#xff #x00)))
 
 
 (defun %write-to-client (client octets-or-keyword)
@@ -324,7 +323,7 @@ frames once."
                         do (push c (gethash (%client-server-hook c) h nil))
                         finally (return h)))
            (utf8 (if (stringp message)
-                     (babel:string-to-octets message :encoding :utf-8)
+                     (string-to-shareable-octets message :encoding :utf-8)
                      message)))
       ;; possibly should reorder this stuff, so server thread can start
       ;; sending data while we are building frames for other protocols, or
@@ -405,11 +404,9 @@ non-blocking fashion."
                 (when (eql (client-write-buffer client) :close)
                   (client-disconnect client :close t)
                   (return-from try-write-client nil))
-
                 (when (eql (client-write-buffer client) :enable-read)
                   (client-enable-handler client :read t)
                   (setf (client-write-buffer client) nil))
-
                 (when (client-write-buffer client)
                   (let ((count (send-to (client-socket client)
                                         (client-write-buffer client)

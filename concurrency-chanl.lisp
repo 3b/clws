@@ -33,7 +33,7 @@ and secondary value."
 #+sbcl
 (defstruct atomic-place
   (val 0 :type (unsigned-byte #+x86-64 64 #+x86 32)))
-#+ccl
+#+(or ccl lispworks)
 (defun make-atomic-place (&key val)
   val)
 
@@ -54,34 +54,37 @@ and secondary value."
 
 (defun mailbox-send-message (mailbox message)
   "Adds a MESSAGE to MAILBOX. Message can be any object."
-   #- (or ccl sbcl)
+  #- (or ccl sbcl lispworks)
   (error "not implemented")
   (progn
-      #+ccl (ccl::atomic-incf (car mailbox))
-      #+sbcl (sb-ext:atomic-incf (atomic-place-val (car mailbox)))
+    #+ccl (ccl::atomic-incf (car mailbox))
+    #+sbcl (sb-ext:atomic-incf (atomic-place-val (car mailbox)))
+    #+lispworks (system:atomic-incf (car mailbox))
     (chanl:send (cdr mailbox) message)))
 
 (defun mailbox-receive-message (mailbox &key)
   "Removes the oldest message from MAILBOX and returns it as the
 primary value. If MAILBOX is empty waits until a message arrives."
-  #- (or ccl sbcl)
+  #- (or ccl sbcl lispworks)
   (error "not implemented")
   (prog1
       (chanl:recv (cdr mailbox))
     #+sbcl (sb-ext:atomic-decf (atomic-place-val (car mailbox)))
-    #+ccl(ccl::atomic-decf (car mailbox))))
+    #+ccl (ccl::atomic-decf (car mailbox))
+    #+lispworks (system:atomic-decf (car mailbox))))
 
 (defun mailbox-receive-message-no-hang (mailbox)
   "The non-blocking variant of RECEIVE-MESSAGE. Returns two values,
 the message removed from MAILBOX, and a flag specifying whether a
 message could be received."
-  #- (or ccl sbcl)
+  #- (or ccl sbcl lispworks)
   (error "not implemented")
   (multiple-value-bind (message found)
       (chanl:recv (cdr mailbox) :blockp nil)
     (when found
       #+sbcl (sb-ext:atomic-decf (atomic-place-val (car mailbox)))
-      #+ccl(ccl::atomic-decf (car mailbox)))
+      #+ccl (ccl::atomic-decf (car mailbox))
+      #+lispworks (system:atomic-decf (car mailbox)))
     (values message found)))
 
 (defun mailbox-count (mailbox)

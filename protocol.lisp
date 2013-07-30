@@ -63,7 +63,7 @@
   ;; when we get one we don't recognize, so do that then close the connection
   (client-enqueue-write
    client
-   (babel:string-to-octets
+   (string-to-shareable-octets
     (format nil "HTTP/1.1 400 Bad Request
 Sec-WebSocket-Version: ~{~s~^, ~}
 
@@ -139,7 +139,7 @@ Sec-WebSocket-Version: ~{~s~^, ~}
 ;;; flash 'policy file' to connect
 (defparameter *policy-file-request*
   (concatenate '(vector (unsigned-byte 8))
-               (babel:string-to-octets "<policy-file-request/>")
+               (string-to-shareable-octets "<policy-file-request/>")
                #(0)))
 
 (defun match-policy-file (buffer)
@@ -218,7 +218,7 @@ Sec-WebSocket-Version: ~{~s~^, ~}
   ;; not sure what 'protocol' should be for now... assuming protocol
   ;; version numbers (as integers) for now, with hixie-76/ietf-00 as 0
   (let ((utf8 (when message
-                (babel:string-to-octets message :encoding :utf-8)))
+                (string-to-shareable-octets message :encoding :utf-8)))
         (code (if (and (integerp code) (<= 0 code 65535)
                        ;; MUST NOT send 1005 or 1006
                        (/= code 1005)
@@ -266,9 +266,8 @@ Sec-WebSocket-Version: ~{~s~^, ~}
         for frame-octets = (min octets-left frame-size)
         for length-octets = (if (< frame-octets 126)
                                 0 (if (< frame-octets 65536) 2 8))
-        collect (let ((a (make-array (+ 2 length-octets frame-octets)
-                                     :element-type '(unsigned-byte 8)
-                                     :initial-element 0)))
+     collect (let ((a (make-array-ubyte8 (+ 2 length-octets frame-octets)
+                                         :initial-element 0)))
                   (setf (aref a 0) (logior fin op))
                   (cond
                     ((< frame-octets 126)
@@ -298,7 +297,7 @@ Sec-WebSocket-Version: ~{~s~^, ~}
 
 (defun text-message-for-protocol (protocol message &key frame-size)
   (let* ((utf8 (if (stringp message)
-                   (babel:string-to-octets message :encoding :utf-8)
+                   (string-to-shareable-octets message :encoding :utf-8)
                    message))
          (frame-size (or frame-size (1+ (length utf8)))))
     (case protocol

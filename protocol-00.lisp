@@ -6,14 +6,13 @@
 ;;; used by firefox4/5, chrome6-13?, safari 5.0.1, opera 11
 ;;; (firefox and opera disabled by default)
 (defparameter *draft-76/00-close-frame*
-  (make-array 2 :element-type '(unsigned-byte 8)
-                :initial-contents '(#xff #x00)))
+  (make-array-ubyte8 2 :initial-contents '(#xff #x00)))
 
 #++
 (defparameter *allow-draft-75* t)
 #++
 (defun make-handshake-75 (origin location protocol)
-  (babel:string-to-octets
+  (string-to-shareable-octets
    (format nil "HTTP/1.1 101 Web Socket Protocol Handshake
 Upgrade: WebSocket
 Connection: Upgrade
@@ -28,7 +27,7 @@ WebSocket-Protocol: ~a
    :encoding :utf-8))
 
 (defun make-handshake-76 (origin location protocol)
-  (babel:string-to-octets
+  (string-to-shareable-octets
    (format nil "HTTP/1.1 101 Web Socket Protocol Handshake
 Upgrade: WebSocket
 Connection: Upgrade
@@ -67,7 +66,7 @@ client."
 ;; (extract-key "17  9 G`ZD9   2 2b 7X 3 /r90") -> 179922739
 
 (defun make-challenge-00 (k1 k2 k3)
-  (let ((b (make-array 16 :element-type '(unsigned-byte 8))))
+  (let ((b (make-array-ubyte8 16)))
     (loop for i from 0 below 4
        for j from 24 downto 0 by 8
        do (setf (aref b i) (ldb (byte 8 j) k1))

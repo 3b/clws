@@ -1,10 +1,10 @@
 (in-package #:ws)
 
-(defparameter *server-busy-message* (babel:string-to-octets
-                             "HTTP/1.1 503 service unavailable
+(defparameter *server-busy-message* (string-to-shareable-octets
+                                     "HTTP/1.1 503 service unavailable
 
 "
-                             :encoding :utf-8))
+                                     :encoding :utf-8))
 
 (defclass server ()
   ((event-base :initform nil :accessor server-event-base :initarg :event-base)
@@ -73,11 +73,9 @@ are thread-safe.
   (let* ((event-base (make-instance 'iolib:event-base))
          (server (make-instance 'server
                                 :event-base event-base))
-         (temp (make-array 16 :element-type '(unsigned-byte 8)))
+         (temp (make-array-ubyte8 16))
          (control-mailbox (make-queue :name "server-control"))
-         (wake-up (make-array 1 :element-type '(unsigned-byte 8)
-                              :initial-element 0)))
-
+         (wake-up (make-array-ubyte8 1 :initial-element 0)))
     ;; To be clear, there are three sockets used for a server.  The
     ;; main one is the WebSockets server (socket).  There is also a
     ;; pair of connected sockets (control-socket-1 control-socket-2)
@@ -90,8 +88,10 @@ are thread-safe.
                ;; some code, for things like enabling writers when
                ;; there is new data to write
                (enqueue thunk control-mailbox)
-               (ignore-errors
-                 (iolib:send-to control-socket-2 wake-up))))
+               (if *debug-on-server-errors*
+                   (iolib:send-to control-socket-2 wake-up)
+                   (ignore-errors
+                     (iolib:send-to control-socket-2 wake-up)))))
         (unwind-protect
              (iolib:with-open-socket (socket :connect :passive
                                              :address-family :internet
