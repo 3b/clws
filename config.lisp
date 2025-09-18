@@ -49,19 +49,20 @@ to be buffered indefinitely though, so be careful with large settings.")
   "set to T to enter debugger on resource-handler errors, NIL to drop the connections and try to send a disconnect to handler.")
 
 
-(defvar *400-message* (string-to-shareable-octets
-                             "HTTP/1.1 400 Bad Request
+;; RFC-compliant CRLF sequence for HTTP/1.1 status and header lines
+(defparameter +crlf+ (coerce (list #\Return #\Linefeed) 'string))
 
-"
-                             :encoding :utf-8))
 
-(defvar *403-message* (string-to-shareable-octets
-                             "HTTP/1.1 403 Forbidden
+(defvar *400-message*
+  (string-to-shareable-octets
+   (format nil "HTTP/1.1 400 Bad Request~A~A" +crlf+ +crlf+)
+   :encoding :utf-8))
 
-"
-                             :encoding :utf-8))
-(defvar *404-message* (string-to-shareable-octets
-                             "HTTP/1.1 404 Resource not found
-
-"
-                             :encoding :utf-8))
+(defvar *403-message*
+  (string-to-shareable-octets
+   (format nil "HTTP/1.1 403 Forbidden~A~A" +crlf+ +crlf+)
+   :encoding :utf-8))
+(defvar *404-message*
+  (string-to-shareable-octets
+   (format nil "HTTP/1.1 404 Resource not found~A~A" +crlf+ +crlf+)
+   :encoding :utf-8))

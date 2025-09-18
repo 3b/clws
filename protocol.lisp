@@ -64,10 +64,9 @@
   (client-enqueue-write
    client
    (string-to-shareable-octets
-    (format nil "HTTP/1.1 400 Bad Request
-Sec-WebSocket-Version: ~{~s~^, ~}
-
-" *supported-protocol-versions*)
+    (format nil
+            "HTTP/1.1 400 Bad Request~ASec-WebSocket-Version: ~{~s~^, ~}~A~A"
+            +crlf+ *supported-protocol-versions* +crlf+ +crlf+)
     :encoding :utf-8))
   (client-enqueue-write client :close)
   ;; is this needed after enqueueing :close?
