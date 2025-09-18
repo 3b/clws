@@ -130,6 +130,11 @@ ignore any already received data from this client."))
 (defgeneric resource-received-binary (resource client message)
   (:documentation "Called when a client sent a binary message to a WebSockets resource."))
 
+(defgeneric resource-received-pong (resource client message)
+  (:documentation "Called when a client sent a pong frame to a WebSockets resource.
+MESSAGE is the payload data from the pong frame (may be empty).
+This is typically used for latency testing and connection keep-alive monitoring."))
+
 (defgeneric resource-received-custom-message (resource message)
   (:documentation "Called on the resource listener thread when a
   client is passed an arbitrary message via
@@ -147,6 +152,10 @@ ignore any already received data from this client."))
 
 (defmethod resource-client-connected (res client)
   (declare (ignore res client))
+  nil)
+
+(defmethod resource-received-pong (res client message)
+  (declare (ignore res client message))
   nil)
 
 (defmethod send-custom-message-to-resource (resource message)
@@ -243,9 +252,15 @@ RESOURCE-CLIENT-DISCONNECTED and RESOURCE-RECEIVED-FRAME as appropriate."
              (error "Unknown symbol in read-queue of resource: ~S " data))
             ((consp data)
              (restarts
-              (if (eq (car data) :text)
-                  (resource-received-text resource client (cadr data))
-                  (resource-received-binary resource client (cadr data)))))
+              (cond
+                ((eq (car data) :text)
+                 (resource-received-text resource client (cadr data)))
+                ((eq (car data) :binary)
+                 (resource-received-binary resource client (cadr data)))
+                ((eq (car data) :pong)
+                 (resource-received-pong resource client (cadr data)))
+                (t
+                 (error "Unknown message type: ~S" (car data))))))
             (t
              (error "got unknown data in run-resource-listener?"))))))
 
