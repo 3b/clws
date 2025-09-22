@@ -4,7 +4,7 @@
 ;;;; -----------
 
 (defclass echo-resource (ws-resource)
-  ())
+  ((ping-times :initform (make-hash-table :test 'equal) :accessor ping-times)))
 
 (register-global-resource
  "/echo"
@@ -28,12 +28,34 @@
   #++(format t "got frame ~s from client ~s" message client)
   (when (string= message "error")
     (error "got \"error\" message "))
+  ;; Test ping functionality - if message is "ping", send a ping frame with timestamp
+  (when (string= message "ping")
+    (let ((timestamp (get-universal-time)))
+      (format t "Sending ping to client ~s at time ~s~%" client timestamp)
+      ;; Store the ping time with the payload as key
+      (setf (gethash (format nil "~d" timestamp) (ping-times res)) timestamp)
+      (write-to-client-ping client (format nil "~d" timestamp))))
   (write-to-client-text client message))
 
 (defmethod resource-received-binary((res echo-resource) client message)
   #++(format t "got binary frame ~s from client ~s" (length message) client)
  #++ (write-to-client-text client (format nil "got binary ~s" message))
   (write-to-client-binary client message))
+
+(defmethod resource-received-pong ((res echo-resource) client message)
+  "Handle pong frames for latency measurement"
+  (let* ((payload-str (if (vectorp message)
+                          (babel:octets-to-string message :encoding :utf-8)
+                          (format nil "~s" message)))
+         (send-time (gethash payload-str (ping-times res)))
+         (current-time (get-universal-time)))
+    (if send-time
+        (let ((latency (- current-time send-time)))
+          (format t "Pong received from client ~s. Latency: ~d seconds~%" client latency)
+          (remhash payload-str (ping-times res))
+          ;; Send latency measurement back to client
+          (write-to-client-text client (format nil "Latency: ~d seconds" latency)))
+        (format t "Pong received from client ~s with unknown payload: ~s~%" client payload-str))))
 
 
 #++
