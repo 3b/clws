@@ -124,7 +124,9 @@ Sec-WebSocket-Accept: ~a
          (when pong
            (%write-to-client client pong))))
       (#xa ;; pong
-       (lg "got pong, body=~s~%" (get-octet-vector chunks)))
+       (let ((v (get-octet-vector chunks)))
+         (lg "got pong, body=~s~%" v)
+         (client-enqueue-read client (list client (list :pong v)))))
       (t (error 'fail-the-websockets-connection
                 :status-code 1002
                 :message (format nil "unknown control frame #x~2,'0x" opcode))))))

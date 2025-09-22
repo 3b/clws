@@ -8,6 +8,7 @@
    #:write-to-clients-text
    #:write-to-clients-binary
    #:write-to-client-close
+   #:write-to-client-ping
    #:client-host
    #:client-port
    #:client-resource-name
@@ -23,6 +24,7 @@
    #:unregister-global-resource
    #:resource-received-text
    #:resource-received-binary
+   #:resource-received-pong
    #:resource-client-connected
    #:resource-client-disconnected
    #:run-resource-listener

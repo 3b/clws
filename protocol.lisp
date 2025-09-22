@@ -248,8 +248,22 @@ Sec-WebSocket-Version: ~{~s~^, ~}
     (0 nil)
     ((7 8 13)
      (flex:with-output-to-sequence (s)
-       ;; FIN + opcode 8
+       ;; FIN + opcode #xa (pong)
        (write-byte #x8a s)
+       ;; MASK = 0, length
+       (write-byte (length body) s)
+       (when body
+         (write-sequence body s))))))
+
+(defun ping-frame-for-protocol (protocol body)
+  (when (> (length body) 125)
+    (setf body nil))
+  (case protocol
+    (0 nil)
+    ((7 8 13)
+     (flex:with-output-to-sequence (s)
+       ;; FIN + opcode #x9 (ping)
+       (write-byte #x89 s)
        ;; MASK = 0, length
        (write-byte (length body) s)
        (when body
@@ -350,3 +364,20 @@ message into frames no larger than FRAME-SIZE octets."
                       message
                       :frame-size frame-size)
         do (%write-to-client client frame)))
+
+(defun write-to-client-ping (client &optional message)
+  "Send a ping frame to client. MESSAGE is optional payload data (max 125 bytes).
+According to RFC 6455, the client must respond with a pong frame containing
+the same payload data."
+  (let ((payload (cond
+                   ((null message) nil)
+                   ((stringp message)
+                    (string-to-shareable-octets message :encoding :utf-8))
+                   (t message))))
+    (when (and payload (> (length payload) 125))
+      (error "Ping payload must not exceed 125 bytes"))
+    (let ((ping-frame (ping-frame-for-protocol
+                       (client-websocket-version client)
+                       payload)))
+      (when ping-frame
+        (%write-to-client client ping-frame)))))
