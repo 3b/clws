@@ -70,13 +70,11 @@ Test this with the example provided in the above document:
           (%write-to-client client
                             (string-to-shareable-octets
                              ;; todo: Sec-WebSocket-Protocol, Sec-WebSocket-Extension
-                             (format nil "HTTP/1.1 101 Switching Protocols
-Upgrade: websocket
-Connection: Upgrade
-Sec-WebSocket-Accept: ~a
-
-"
-                                     (make-challenge-o7 key))
+                             (format nil
+                                     "HTTP/1.1 101 Switching Protocols~AUpgrade: websocket~AConnection: Upgrade~ASec-WebSocket-Accept: ~A~A~A"
+                                     +crlf+ +crlf+ +crlf+
+                                     (make-challenge-o7 key)
+                                     +crlf+ +crlf+)
                              :encoding :iso-8859-1))))
       t)))
 
@@ -304,4 +302,3 @@ Sec-WebSocket-Accept: ~a
 (push 7 *supported-protocol-versions*)
 (push 8 *supported-protocol-versions*)
 (push 13 *supported-protocol-versions*)
-
