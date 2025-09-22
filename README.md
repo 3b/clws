@@ -99,6 +99,8 @@ Finally, we register the resource with the server, and start a thread to handle 
 
 * `resource-received-binary (resource client message)`: Resource handlers should specialize this generic function to handle `binary` messages from clients. `message` is a `(vector (unsigned-byte 8))` containing the message from `client`.
 
+* `resource-received-pong (resource client message)`: Resource handlers can specialize this generic function to handle `pong` frames from clients. `message` is the payload data from the pong frame (may be empty). This is typically used for latency testing and connection keep-alive monitoring when combined with `write-to-client-ping`.
+
 * `resource-client-connected (resource client)`: Called to notify a resource handler when a client connects. If the handler objects to a particular client for some reason, it can return `:reject` to close the connection and ignore any already received data from that client.
 
 * `resource-client-disconnected (resource client)`: Called when a client disconnects.
@@ -114,6 +116,8 @@ Finally, we register the resource with the server, and start a thread to handle 
 * `write-to-clients-binary (clients message &key frame-size)`: Send `message` to a list of `clients`. Same as `write-to-client-binary`, but tries to avoid repeated processing (utf-8 encoding, building frames, etc) that can be shared between clients.
 
 * `write-to-client-close (client &key (code 1000) message)`: Send a `close` message to `client`. `code` specifies the 'status code' to be send in the close message (see the [websocket spec][http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-15#section-7.4] for valid codes) defaults to 1000, indicating "normal closure".  `message` can be a short string (must utf-8 encode to < 123 octets) describing the reason for closing the connection.
+
+* `write-to-client-ping (client &optional message)`: Send a `ping` frame to `client` according to RFC 6455. `message` is optional payload data (max 125 bytes). The client must respond with a pong frame containing the same payload data. Useful for connection keep-alive and latency testing.
 
 ## Getting information about connected clients  
    (most of these should be treated as read-only, and any visible `setf`
