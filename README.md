@@ -80,6 +80,9 @@ Finally, we register the resource with the server, and start a thread to handle 
 * `*protocol-76/00-support*`: set to T to enable support for [draft-hixie-76][hixie]/[draft-ietf-hybi-00][0] protocol  
   No longer used by current browsers, and doesn't support binary frames. May go away soon.
 
+* `*default-socket-backlog*`: default socket backlog parameter for the server listener (default: 5).
+  Controls how many pending connections can be queued before the OS starts rejecting them. Can be overridden with the `:backlog` keyword argument to `run-server`.
+
 * `*max-clients*`: maximum number of simultaneous connections allowed, or `NIL` for no limit
 
 * `*max-read-frame-size*`, `*max-read-message-size*`: maximum 'frame' and 'message' sizes allowed from clients.  

@@ -5,6 +5,10 @@
 (defvar *protocol-76/00-support* nil
   "set to NIL to disable draft-hixie-76/draft-ietf-00 support, true to enable.")
 
+(defvar *default-socket-backlog* 5
+  "Default socket backlog parameter for the server listener. Controls how many
+pending connections can be queued before the OS starts rejecting them.")
+
 (defvar *max-clients* 256
   "Max number of simultaneous clients allowed (nil for no limit).
 Extra connections will get a HTTP 5xx response (without reading headers).")

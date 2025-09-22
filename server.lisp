@@ -57,10 +57,15 @@ connections and has a bunch of client instances that it controls."))
            ;; otherwise handle normally
            (add-reader-to-client client)))))))
 
-(defun run-server (port &key (addr +ipv4-unspecified+))
+(defun run-server (port &key (addr +ipv4-unspecified+) (backlog *default-socket-backlog*))
   "Starts a server on the given PORT and blocks until the server is
 closed.  Intended to run in a dedicated thread (the current one),
 dubbed the Server Thread.
+
+Arguments:
+  PORT - Port number to listen on
+  ADDR - Address to bind to (defaults to +ipv4-unspecified+)
+  BACKLOG - Socket backlog for pending connections (defaults to *default-socket-backlog*)
 
 Establishes a socket listener in the current thread.  This thread
 handles all incoming connections, and because of this fact is able to
@@ -101,7 +106,7 @@ are thread-safe.
                                              ;; bind and listen as well
                                              :local-host addr
                                              :local-port port
-                                             :backlog 5
+                                             :backlog backlog
                                              :reuse-address t
                                              #++ :no-delay)
                (iolib:set-io-handler event-base
