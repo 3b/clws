@@ -1,10 +1,9 @@
 (in-package #:ws)
 
-(defparameter *server-busy-message* (string-to-shareable-octets
-                                     "HTTP/1.1 503 service unavailable
-
-"
-                                     :encoding :utf-8))
+(defparameter *server-busy-message*
+  (string-to-shareable-octets
+   (format nil "HTTP/1.1 503 service unavailable~A~A" +crlf+ +crlf+)
+   :encoding :utf-8))
 
 (defclass server ()
   ((event-base :initform nil :accessor server-event-base :initarg :event-base)
