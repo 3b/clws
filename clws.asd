@@ -29,6 +29,8 @@
                (:file "client")
                (:file "resource")
                (:file "server"))
+  :license "MIT"
+  :author "Bart Botta <00003b at gmail.com>"
   :description "CLWS implement the WebSocket Protocol as described by
 RFC6455[1] (as well as some older drafts implemented by recent
 browsers [2][3][4][5]).  Only a WebSockets server implementation is
