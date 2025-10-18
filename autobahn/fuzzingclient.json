@@ -1,0 +1,15 @@
+{
+  "outdir": "./reports/clients",
+  "servers": [
+    {
+      "agent": "CLWS",
+      "url": "ws://localhost:12345/echo",
+      "options": {
+        "version": 18
+      }
+    }
+  ],
+  "cases": ["*"],
+  "exclude-cases": [],
+  "exclude-agent-cases": {}
+}
